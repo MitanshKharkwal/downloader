@@ -1,4 +1,4 @@
-"""Windows desktop app shell.
+﻿"""Windows desktop app shell.
 
 Kivy so the same UI code can eventually target Android too. Talks to
 the core engine directly in-process, and also runs a small local IPC
@@ -92,7 +92,7 @@ class DownloadRow(BoxLayout):
             self.detail_label.text = (
                 f"{human_bytes(task.downloaded_bytes)} / {human_bytes(task.total_bytes)}"
                 f"   {human_bytes(task.speed_bps)}/s{extra}"
-        )
+            )
         self.pause_btn.text = "Resume" if task.status == DownloadStatus.PAUSED else "Pause"
         self.pause_btn.disabled = task.status in (
             DownloadStatus.COMPLETED,
