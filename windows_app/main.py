@@ -86,9 +86,12 @@ class DownloadRow(BoxLayout):
         self.status_label.text = task.status.value
         self.progress.value = task.progress()
         extra = f"  peers:{task.num_peers}" if task.type.value == "torrent" else f"  conns:{task.num_connections}"
-        self.detail_label.text = (
-            f"{human_bytes(task.downloaded_bytes)} / {human_bytes(task.total_bytes)}"
-            f"   {human_bytes(task.speed_bps)}/s{extra}"
+        if task.status == DownloadStatus.ERROR and task.error_message:
+            self.detail_label.text = task.error_message
+        else:
+            self.detail_label.text = (
+                f"{human_bytes(task.downloaded_bytes)} / {human_bytes(task.total_bytes)}"
+                f"   {human_bytes(task.speed_bps)}/s{extra}"
         )
         self.pause_btn.text = "Resume" if task.status == DownloadStatus.PAUSED else "Pause"
         self.pause_btn.disabled = task.status in (
