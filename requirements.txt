@@ -1,0 +1,11 @@
+# Core engine
+requests>=2.31
+libtorrent>=2.0
+
+# Windows desktop app
+kivy>=2.3
+
+# Note: libtorrent ships prebuilt wheels for common platforms/Python
+# versions. If pip tries to build from source, install the
+# libtorrent-rasterbar system package first (Windows: see
+# https://www.libtorrent.org/building.html for prebuilt options).

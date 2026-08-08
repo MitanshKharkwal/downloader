@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { font-family: system-ui, sans-serif; width: 280px; padding: 12px; font-size: 13px; }
+    h1 { font-size: 14px; margin: 0 0 10px; }
+    .row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+    .status { display: flex; align-items: center; gap: 6px; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: #999; }
+    .dot.ok { background: #2ea043; }
+    .dot.bad { background: #d1242f; }
+    input[type="text"] { width: 100%; box-sizing: border-box; padding: 6px; margin-bottom: 6px; }
+    button { width: 100%; padding: 6px; cursor: pointer; }
+    .muted { color: #666; font-size: 11px; margin-top: 8px; }
+  </style>
+</head>
+<body>
+  <h1>Download Manager</h1>
+
+  <div class="row">
+    <span>Intercept downloads</span>
+    <input type="checkbox" id="intercept-toggle">
+  </div>
+
+  <div class="row status">
+    <span class="dot" id="status-dot"></span>
+    <span id="status-text">Checking connection...</span>
+  </div>
+
+  <input type="text" id="manual-url" placeholder="Paste a URL or magnet link...">
+  <button id="manual-add-btn">Send to Download Manager</button>
+
+  <div class="muted" id="last-result"></div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

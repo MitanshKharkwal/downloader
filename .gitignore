@@ -1,0 +1,7 @@
+﻿venv/
+__pycache__/
+*.pyc
+.dm_state.json
+downloads/
+*.dmpart.json
+*.part
