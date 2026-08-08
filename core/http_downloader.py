@@ -26,6 +26,7 @@ from .models import DownloadStatus, DownloadTask
 
 DEFAULT_CHUNK = 256 * 1024  # bytes read per requests.iter_content() call
 SPEED_WINDOW_SECONDS = 5
+MAX_CONSECUTIVE_SEGMENT_FAILURES = 6  # ~6 retries * 1.5s backoff before giving up loudly
 
 # requests' default User-Agent ("python-requests/X.X") gets blocked outright
 # by a lot of CDNs and file hosts as basic anti-bot/anti-hotlinking
@@ -219,6 +220,8 @@ class HttpDownload:
 
     def _download_segment(self, seg: _Segment) -> None:
         headers = dict(self.extra_headers)
+        consecutive_failures = 0
+
         with requests.Session() as session, open(self._part_path, "r+b") as f:
             while not seg.done and not self._cancel_event.is_set():
                 self._pause_event.wait()  # blocks here while paused
@@ -242,6 +245,7 @@ class HttpDownload:
                             f.write(chunk)
                             n = len(chunk)
                             seg.downloaded += n
+                            consecutive_failures = 0  # this segment is making real progress again
                             with self._lock:
                                 self.task.downloaded_bytes += n
                                 if self.task.total_bytes <= 0:
@@ -254,6 +258,22 @@ class HttpDownload:
                                     self.task.total_bytes = self.task.downloaded_bytes
                             self.events.emit("progress", self.task)
                 except requests.RequestException as exc:
+                    consecutive_failures += 1
+                    if consecutive_failures >= MAX_CONSECUTIVE_SEGMENT_FAILURES:
+                        # A host that keeps rejecting/resetting the connection
+                        # would otherwise retry silently forever -- the task
+                        # just sits at "downloading" with 0 progress with no
+                        # way to tell it's actually failing. Give up loudly
+                        # instead so the person isn't left staring at a stuck
+                        # progress bar with no explanation.
+                        self.task.error_message = (
+                            f"gave up after {consecutive_failures} failed attempts: {exc}"
+                        )
+                        self._cancel_event.set()
+                        self._pause_event.set()
+                        self.task.status = DownloadStatus.ERROR
+                        self.events.emit("status", self.task)
+                        return
                     # Transient network error: brief backoff, retry the
                     # remainder of this segment from where it left off.
                     self.task.error_message = f"segment retry after: {exc}"
