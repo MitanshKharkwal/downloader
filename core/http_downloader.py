@@ -27,6 +27,16 @@ from .models import DownloadStatus, DownloadTask
 DEFAULT_CHUNK = 256 * 1024  # bytes read per requests.iter_content() call
 SPEED_WINDOW_SECONDS = 5
 
+# requests' default User-Agent ("python-requests/X.X") gets blocked outright
+# by a lot of CDNs and file hosts as basic anti-bot/anti-hotlinking
+# protection -- discovered this the hard way against a real file host that
+# reset the connection every time. A normal browser UA avoids that class of
+# problem entirely; callers can still override it via the `headers` param.
+DEFAULT_USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+)
+
 
 @dataclass
 class _Segment:
@@ -56,7 +66,7 @@ class HttpDownload:
         self.events = events
         self.num_connections = max(1, num_connections)
         self.chunk_size = chunk_size
-        self.extra_headers = headers or {}
+        self.extra_headers = {"User-Agent": DEFAULT_USER_AGENT, **(headers or {})}
 
         self._segments: list[_Segment] = []
         self._lock = threading.Lock()
@@ -234,6 +244,14 @@ class HttpDownload:
                             seg.downloaded += n
                             with self._lock:
                                 self.task.downloaded_bytes += n
+                                if self.task.total_bytes <= 0:
+                                    # Server never gave us a Content-Length (e.g.
+                                    # chunked transfer encoding) -- there's no way
+                                    # to know the real total in advance, so mirror
+                                    # it to what's downloaded so far. Otherwise the
+                                    # UI is stuck showing "X / 0.0B" forever, even
+                                    # after a fully successful download.
+                                    self.task.total_bytes = self.task.downloaded_bytes
                             self.events.emit("progress", self.task)
                 except requests.RequestException as exc:
                     # Transient network error: brief backoff, retry the
