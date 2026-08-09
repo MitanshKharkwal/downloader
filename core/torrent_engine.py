@@ -82,6 +82,10 @@ class TorrentSession:
         if self._session is not None:
             self._session.pause()
 
+    def set_download_rate_limit(self, limit_bps: int) -> None:
+        if self._session is not None:
+            self._session.apply_settings({"download_rate_limit": limit_bps})
+
 
 class TorrentDownload:
     def __init__(self, task: DownloadTask, events: EventEmitter, torrent_session: TorrentSession) -> None:

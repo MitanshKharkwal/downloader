@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using System.Text.Json.Serialization;
 
 namespace DownloadManagerUI.Models;
 
@@ -13,35 +14,44 @@ public class DownloadTask : INotifyPropertyChanged
     private double _speedBps;
     private string _error = "";
 
+    [JsonPropertyName("id")]
     public string Id { get; set; } = "";
+    [JsonPropertyName("source")]
     public string Source { get; set; } = "";
+    [JsonPropertyName("priority")]
     public string Priority { get; set; } = "NORMAL";
+    [JsonPropertyName("file_path")]
     public string FilePath { get; set; } = "";
 
+    [JsonPropertyName("status")]
     public string Status
     {
         get => _status;
         set => SetProperty(ref _status, value);
     }
 
+    [JsonPropertyName("downloaded_bytes")]
     public long DownloadedBytes
     {
         get => _downloadedBytes;
         set { if (SetProperty(ref _downloadedBytes, value)) OnPropertyChanged(nameof(Progress)); }
     }
 
+    [JsonPropertyName("total_bytes")]
     public long TotalBytes
     {
         get => _totalBytes;
         set { if (SetProperty(ref _totalBytes, value)) OnPropertyChanged(nameof(Progress)); }
     }
 
+    [JsonPropertyName("speed_bps")]
     public double SpeedBps
     {
         get => _speedBps;
         set => SetProperty(ref _speedBps, value);
     }
 
+    [JsonPropertyName("error")]
     public string Error
     {
         get => _error;

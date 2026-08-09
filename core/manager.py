@@ -209,6 +209,7 @@ class DownloadManager:
             self._maybe_start_next()
 
     def set_priority(self, task_id: str, priority: Priority) -> None:
+        engine = None
         with self._lock:
             task = self._tasks.get(task_id)
             if not task or task.priority == priority:
@@ -226,27 +227,17 @@ class DownloadManager:
                     
             is_active = task.status in (DownloadStatus.CONNECTING, DownloadStatus.DOWNLOADING)
             
+            if is_active and task.type == DownloadType.HTTP:
+                engine = self._engines.pop(task.id, None)
+                task.status = DownloadStatus.QUEUED
+
+        if engine:
+            if hasattr(engine, "stop_threads"):
+                engine.stop_threads()
+
         self._save_state()
         self.events.emit("status", task)
-        
-        # If the task is active and HTTP, we need to cancel the old engine
-        # (which was created with the old num_connections) and let the scheduler
-        # restart it with a fresh HttpDownload that picks up the new value.
-        # A simple pause/resume doesn't work because HttpDownload.resume() just
-        # unblocks existing threads -- it never creates new ones.
-        if is_active and task.type == DownloadType.HTTP:
-            with self._lock:
-                engine = self._engines.pop(task.id, None)
-                # Re-queue the task so _maybe_start_next will restart it
-                task.status = DownloadStatus.QUEUED
-            if engine:
-                # Signal cancel without deleting files; the old threads will
-                # exit cleanly, and a new engine will be created by the scheduler.
-                engine._cancel_event.set()
-                engine._pause_event.set()
-            self._maybe_start_next()
-        else:
-            self._maybe_start_next()
+        self._maybe_start_next()
 
     def clear_finished(self) -> None:
         """Remove all completed, errored, or canceled tasks from the list."""
@@ -273,6 +264,10 @@ class DownloadManager:
             self.pause(task_id)
         self._torrent_session.shutdown()
         self._save_state()
+
+    def set_global_speed_limit(self, limit_bps: int) -> None:
+        self.rate_limiter.rate = limit_bps
+        self._torrent_session.set_download_rate_limit(limit_bps)
 
     # -- scheduling ----------------------------------------------------------
 

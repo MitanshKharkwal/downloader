@@ -87,7 +87,7 @@ def _make_handler(manager: 'DownloadManager', token: str):
                     return
                 try:
                     result = manager.add(body["source"])
-                    self._send_json(200, {"ok": True, **result})
+                    self._send_json(200, {"ok": True, **result.to_dict()})
                 except Exception as exc:
                     self._send_json(500, {"ok": False, "error": str(exc)})
                 return
@@ -100,17 +100,17 @@ def _make_handler(manager: 'DownloadManager', token: str):
                 try:
                     if method == "list_tasks":
                         tasks = []
-                        for tid, task in manager.tasks.items():
+                        for task in manager.list_tasks():
                             tasks.append({
-                                "id": tid,
+                                "id": task.id,
                                 "source": task.source,
                                 "status": task.status.name,
                                 "priority": task.priority.name,
                                 "downloaded_bytes": task.downloaded_bytes,
                                 "total_bytes": task.total_bytes,
                                 "speed_bps": task.speed_bps,
-                                "file_path": task.file_path,
-                                "error": task.error
+                                "file_path": task.dest_path,
+                                "error": task.error_message
                             })
                         self._send_json(200, {"ok": True, "tasks": tasks})
                     elif method == "pause":
@@ -129,6 +129,7 @@ def _make_handler(manager: 'DownloadManager', token: str):
                         manager.clear_finished()
                         self._send_json(200, {"ok": True})
                     elif method == "shutdown":
+                        manager.shutdown()
                         self._send_json(200, {"ok": True})
                         import threading
                         threading.Timer(0.5, lambda: __import__('os')._exit(0)).start()

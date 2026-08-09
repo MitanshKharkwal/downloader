@@ -10,7 +10,7 @@ straight here -- no extension, no native messaging host needed.
 ## Files
 
 ```
-main.py             Kivy app (touch-sized version of windows_app/main.py)
+main.py             Kivy app (touch-sized version of DownloadManagerUI)
 intent_bridge.py     pyjnius glue for reading/receiving Android intents,
                       with a desktop stub so this is testable off-device
 buildozer.spec        packaging config: permissions, requirements, intent filters

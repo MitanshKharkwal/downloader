@@ -3,10 +3,10 @@ import sys
 import time
 
 sys.path.insert(0, "/home/claude/download_manager")
-sys.path.insert(0, "/home/claude/download_manager/windows_app")
+sys.path.insert(0, "/home/claude/download_manager/core")
 
-from core import DownloadManager
-from ipc_server import IpcServer, load_or_create_token
+from core.manager import DownloadManager
+from core.ipc_server import IpcServer, load_or_create_token
 
 APP_DATA_DIR = os.path.join(os.path.expanduser("~"), ".download_manager")
 DOWNLOAD_DIR = os.path.join(APP_DATA_DIR, "downloads")

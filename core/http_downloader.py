@@ -112,6 +112,11 @@ class HttpDownload:
         self.task.status = DownloadStatus.CANCELED
         self.events.emit("status", self.task)
         
+    def stop_threads(self) -> None:
+        """Stop threads without changing task status or deleting files (used for restarting engines)."""
+        self._cancel_event.set()
+        self._pause_event.set()
+        
         # If the controller thread is dead/never started, delete immediately.
         if not self._controller_thread or not self._controller_thread.is_alive():
             self._cleanup_state_file()

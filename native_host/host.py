@@ -8,7 +8,7 @@ JSON response to stdout, and Chrome kills the process. See:
 https://developer.chrome.com/docs/extensions/develop/concepts/native-messaging
 
 This process's only job is translating that into a plain HTTP POST to
-the desktop app's local IPC server (see windows_app/ipc_server.py). If
+the desktop app's local IPC server (see core/ipc_server.py). If
 the app isn't running yet, it tries to launch it (via a configurable
 launch command) and retries briefly before giving up.
 """
@@ -26,7 +26,7 @@ import urllib.request
 
 APP_DATA_DIR = os.path.join(os.path.expanduser("~"), ".download_manager")
 TOKEN_PATH = os.path.join(APP_DATA_DIR, "ipc_token.txt")
-IPC_PORT = 47821  # must match windows_app/ipc_server.py's DEFAULT_PORT
+IPC_PORT = 47821  # must match core/ipc_server.py's DEFAULT_PORT
 LAUNCH_CMD_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "app_launch_command.txt")
 
 
