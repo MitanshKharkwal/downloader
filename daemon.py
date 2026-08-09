@@ -20,14 +20,13 @@ def main():
     token = load_or_create_token(TOKEN_PATH)
     ipc = IpcServer(manager, token)
     
-    print(f"Starting DownloadManager Daemon on port {ipc.port}...")
     try:
         ipc.start()
         # Keep the daemon running
         while True:
             time.sleep(1)
     except KeyboardInterrupt:
-        print("Stopping daemon...")
+        pass
     finally:
         ipc.stop()
 
