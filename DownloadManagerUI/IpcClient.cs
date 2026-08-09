@@ -80,4 +80,5 @@ public class IpcClient
     public async Task ResumeTaskAsync(string id) => await SendRpc("resume", new { task_id = id });
     public async Task CancelTaskAsync(string id) => await SendRpc("cancel", new { task_id = id });
     public async Task ClearFinishedAsync() => await SendRpc("clear_finished");
+    public async Task ShutdownAsync() => await SendRpc("shutdown");
 }

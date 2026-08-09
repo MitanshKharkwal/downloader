@@ -6,6 +6,7 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:local="using:DownloadManagerUI"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:tb="using:H.NotifyIcon"
     Title="DownloadManagerUI"
     mc:Ignorable="d">
     <Window.SystemBackdrop>
@@ -17,6 +18,20 @@
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
+
+        <tb:TaskbarIcon
+            x:Name="TrayIcon"
+            IconSource="/Assets/AppIcon.ico"
+            ToolTipText="Download Manager"
+            NoLeftClickDelay="True"
+            LeftClickCommand="{x:Bind ShowWindowCommand}">
+            <tb:TaskbarIcon.ContextFlyout>
+                <MenuFlyout>
+                    <MenuFlyoutItem Text="Open" Click="TrayOpen_Click"/>
+                    <MenuFlyoutItem Text="Exit" Click="TrayExit_Click"/>
+                </MenuFlyout>
+            </tb:TaskbarIcon.ContextFlyout>
+        </tb:TaskbarIcon>
 
         <TitleBar x:Name="AppTitleBar" Title="Download Manager">
             <TitleBar.IconSource>

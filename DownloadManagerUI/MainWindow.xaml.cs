@@ -23,6 +23,7 @@ public sealed partial class MainWindow : Window
         SetTitleBar(AppTitleBar);
 
         AppWindow.SetIcon("Assets/AppIcon.ico");
+        AppWindow.Closing += AppWindow_Closing;
 
         // Navigate the root frame to the main page on startup.
         RootFrame.Navigate(typeof(DownloadsPage));
@@ -48,4 +49,44 @@ public sealed partial class MainWindow : Window
             }
         }
     }
+
+    private void AppWindow_Closing(Microsoft.UI.Windowing.AppWindow sender, Microsoft.UI.Windowing.AppWindowClosingEventArgs args)
+    {
+        args.Cancel = true;
+        this.AppWindow.Hide();
+    }
+
+    public System.Windows.Input.ICommand ShowWindowCommand => new RelayCommand(() =>
+    {
+        this.AppWindow.Show();
+        this.Activate();
+    });
+
+    private void TrayOpen_Click(object sender, RoutedEventArgs e)
+    {
+        this.AppWindow.Show();
+        this.Activate();
+    }
+
+    private async void TrayExit_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var client = new IpcClient();
+            await client.ShutdownAsync();
+        }
+        catch { /* Ignore if already down */ }
+
+        TrayIcon.Dispose();
+        Application.Current.Exit();
+    }
+}
+
+public class RelayCommand : System.Windows.Input.ICommand
+{
+    private readonly Action _execute;
+    public RelayCommand(Action execute) => _execute = execute;
+    public event EventHandler? CanExecuteChanged;
+    public bool CanExecute(object? parameter) => true;
+    public void Execute(object? parameter) => _execute();
 }

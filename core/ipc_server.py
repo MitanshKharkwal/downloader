@@ -128,6 +128,10 @@ def _make_handler(manager: 'DownloadManager', token: str):
                     elif method == "clear_finished":
                         manager.clear_finished()
                         self._send_json(200, {"ok": True})
+                    elif method == "shutdown":
+                        self._send_json(200, {"ok": True})
+                        import threading
+                        threading.Timer(0.5, lambda: __import__('os')._exit(0)).start()
                     else:
                         self._send_json(400, {"ok": False, "error": "unknown method"})
                 except Exception as exc:
