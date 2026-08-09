@@ -8,7 +8,7 @@ extension that captures downloads and magnet links from the browser.
 
 ```
 core/               engine: DownloadManager, HTTP + torrent backends (see core/ for its own README notes)
-windows_app/         Kivy desktop app shell + local IPC server
+DownloadManagerUI/   C# WinUI 3 native desktop frontend
 browser_extension/   Chrome extension (Manifest V3): capture + interception
 native_host/         bridges the extension to the running desktop app
 android_app/          Kivy mobile app shell + Android intent-filter capture (see its own README -- libtorrent-on-Android is an open problem)
@@ -23,7 +23,7 @@ Chrome extension (background.js)
     -- chrome.runtime.sendNativeMessage -->
 native_host/host.py (spawned per-message by Chrome)
     -- HTTP POST /add, localhost only, token-authed -->
-windows_app IPC server (runs inside the desktop app process)
+DownloadManager Daemon (IPC server in python)
     -- in-process call -->
 core.DownloadManager
 ```
@@ -40,16 +40,24 @@ forward it over plain HTTP, relay the response, exit.
 pip install -r requirements.txt
 ```
 
-### 1. Desktop app
+### 1. Start the Core Daemon
 
 ```
-python windows_app/main.py
+cd download_manager
+python daemon.py
 ```
 
 Downloads land in `~/.download_manager/downloads`. First run creates
 `~/.download_manager/ipc_token.txt` -- the native host needs this file
 to exist (i.e. the app needs to have run at least once) before it can
 authenticate to the IPC server.
+
+### 2. Start the Windows UI
+
+```
+cd DownloadManagerUI
+dotnet run
+```
 
 ### 2. Browser extension
 

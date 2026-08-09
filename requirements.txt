@@ -3,7 +3,7 @@ requests>=2.31
 libtorrent>=2.0
 
 # Windows desktop app
-kivy>=2.3
+# (Now uses C# WinUI 3 frontend, no Python GUI libraries needed)
 
 # Note: libtorrent ships prebuilt wheels for common platforms/Python
 # versions. If pip tries to build from source, install the

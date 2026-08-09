@@ -23,6 +23,12 @@ class DownloadStatus(str, Enum):
     CANCELED = "canceled"
 
 
+class Priority(int, Enum):
+    LOW = 0
+    NORMAL = 1
+    HIGH = 2
+
+
 @dataclass
 class DownloadTask:
     """A single download job tracked by the DownloadManager.
@@ -37,13 +43,14 @@ class DownloadTask:
     type: DownloadType
     id: str = field(default_factory=lambda: uuid.uuid4().hex[:12])
     status: DownloadStatus = DownloadStatus.QUEUED
+    priority: Priority = Priority.NORMAL
 
     total_bytes: int = 0
     downloaded_bytes: int = 0
     speed_bps: float = 0.0  # bytes/sec, rolling estimate
 
     # HTTP-specific
-    num_connections: int = 1
+    num_connections: int = 8
     supports_ranges: bool = False
 
     # Torrent-specific
@@ -72,6 +79,20 @@ class DownloadTask:
         d = self.__dict__.copy()
         d["type"] = self.type.value
         d["status"] = self.status.value
+        d["priority"] = self.priority.value
         d["progress"] = round(self.progress(), 4)
         d["eta_seconds"] = self.eta_seconds()
         return d
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "DownloadTask":
+        # progress/eta_seconds are computed display fields added by
+        # to_dict(), not real constructor args -- drop them before
+        # rebuilding, and convert the enum fields back from their
+        # plain string form.
+        d = {k: v for k, v in d.items() if k not in ("progress", "eta_seconds")}
+        d["type"] = DownloadType(d["type"])
+        d["status"] = DownloadStatus(d["status"])
+        if "priority" in d:
+            d["priority"] = Priority(d["priority"])
+        return cls(**d)

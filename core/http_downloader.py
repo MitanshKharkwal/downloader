@@ -62,12 +62,14 @@ class HttpDownload:
         num_connections: int = 8,
         chunk_size: int = DEFAULT_CHUNK,
         headers: dict | None = None,
+        rate_limiter = None,
     ) -> None:
         self.task = task
         self.events = events
         self.num_connections = max(1, num_connections)
         self.chunk_size = chunk_size
         self.extra_headers = {"User-Agent": DEFAULT_USER_AGENT, **(headers or {})}
+        self.rate_limiter = rate_limiter
 
         self._segments: list[_Segment] = []
         self._lock = threading.Lock()
@@ -103,12 +105,23 @@ class HttpDownload:
         self._pause_event.set()
         self.events.emit("status", self.task)
 
-    def cancel(self) -> None:
+    def cancel(self, delete_files: bool = False) -> None:
+        self._delete_on_cancel = delete_files
         self._cancel_event.set()
         self._pause_event.set()  # wake up any thread blocked on pause
         self.task.status = DownloadStatus.CANCELED
         self.events.emit("status", self.task)
-        self._cleanup_state_file()
+        
+        # If the controller thread is dead/never started, delete immediately.
+        if not self._controller_thread or not self._controller_thread.is_alive():
+            self._cleanup_state_file()
+            if delete_files:
+                for path in (self._part_path, self.task.dest_path):
+                    try:
+                        if os.path.exists(path):
+                            os.remove(path)
+                    except OSError:
+                        pass
 
     # -- internals -------------------------------------------------------
 
@@ -160,6 +173,16 @@ class HttpDownload:
             self.task.error_message = str(exc)
             self.events.emit("status", self.task)
             self.events.emit("error", self.task, exc)
+        finally:
+            if self._cancel_event.is_set():
+                self._cleanup_state_file()
+                if getattr(self, "_delete_on_cancel", False):
+                    for path in (self._part_path, self.task.dest_path):
+                        try:
+                            if os.path.exists(path):
+                                os.remove(path)
+                        except OSError:
+                            pass
 
     def _load_or_probe(self) -> bool:
         """Resume from a saved .dmpart.json if it matches, else probe fresh."""
@@ -190,12 +213,14 @@ class HttpDownload:
             # parallelism, but still resumable-ish for progress reporting.
             self.task.supports_ranges = False
             self.task.total_bytes = total
+            self.task.downloaded_bytes = 0
             self._segments = [_Segment(0, max(total - 1, 0))]
             self.num_connections = 1
             return True
 
         self.task.supports_ranges = True
         self.task.total_bytes = total
+        self.task.downloaded_bytes = 0
         self._segments = self._plan_segments(total, self.num_connections)
         return True
 
@@ -242,8 +267,12 @@ class HttpDownload:
                             self._pause_event.wait()
                             if not chunk:
                                 continue
-                            f.write(chunk)
+                            
                             n = len(chunk)
+                            if self.rate_limiter:
+                                self.rate_limiter.consume(n)
+                            
+                            f.write(chunk)
                             seg.downloaded += n
                             consecutive_failures = 0  # this segment is making real progress again
                             with self._lock:

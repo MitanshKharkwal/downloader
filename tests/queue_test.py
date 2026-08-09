@@ -11,7 +11,7 @@ from core.models import DownloadStatus
 from local_range_server import start_server
 
 random.seed(1)
-DATA = bytes(random.getrandbits(8) for _ in range(300 * 1024))
+DATA = bytes(random.getrandbits(8) for _ in range(3 * 1024 * 1024))
 start_server(DATA, port=8766)
 time.sleep(0.2)
 URL = "http://127.0.0.1:8766/{}"

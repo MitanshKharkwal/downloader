@@ -77,7 +77,7 @@ def post_to_app(source: str, filename: str | None = None, retries: int = 5, dela
     payload = json.dumps({"source": source, "filename": filename}).encode()
     launched = False
 
-    for _attempt in range(retries):
+    def _try_once() -> dict | None:
         try:
             req = urllib.request.Request(
                 f"http://127.0.0.1:{IPC_PORT}/add",
@@ -88,9 +88,25 @@ def post_to_app(source: str, filename: str | None = None, retries: int = 5, dela
             with urllib.request.urlopen(req, timeout=2) as resp:
                 return json.loads(resp.read())
         except (urllib.error.URLError, ConnectionRefusedError, TimeoutError):
-            if not launched:
-                _try_launch_app()
-                launched = True
+            return None
+
+    for _attempt in range(retries):
+        result = _try_once()
+        if result is not None:
+            return result
+        if not launched:
+            _try_launch_app()
+            launched = True
+            # A cold Kivy start (GL/font init, etc.) can genuinely take
+            # several seconds -- give it real time to come up rather than
+            # burning through the same short budget used for "app is
+            # already running, just being briefly slow to respond".
+            for _ in range(12):
+                time.sleep(1.0)
+                result = _try_once()
+                if result is not None:
+                    return result
+        else:
             time.sleep(delay)
 
     return {"ok": False, "error": "could not reach the desktop app after retries -- is it running?"}

@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<Page
+    x:Class="DownloadManagerUI.DownloadsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:local="using:DownloadManagerUI"
+    xmlns:controls="using:CommunityToolkit.WinUI.Controls"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <Grid Padding="24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <StackPanel Orientation="Vertical" Spacing="4" Margin="0,0,0,24">
+            <TextBlock Text="Downloads" Style="{StaticResource TitleTextBlockStyle}" />
+            <TextBlock Text="Manage and monitor your active downloads" Style="{StaticResource BodyTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+        </StackPanel>
+
+        <Grid Grid.Row="1" Margin="0,0,0,24" ColumnSpacing="8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            
+            <TextBox x:Name="UrlInput" PlaceholderText="Paste a URL or magnet link" VerticalAlignment="Center" KeyDown="UrlInput_KeyDown" />
+            <Button Grid.Column="1" Content="Clear Finished" Click="ClearFinished_Click" />
+            <Button Grid.Column="2" Content="Download" Style="{StaticResource AccentButtonStyle}" Click="AddDownload_Click" />
+        </Grid>
+
+        <ListView x:Name="TasksList" Grid.Row="2" ItemsSource="{x:Bind Tasks}" SelectionMode="None">
+            <ListView.ItemTemplate>
+                <DataTemplate x:DataType="local:Models.DownloadTask">
+                    <controls:SettingsExpander Header="{x:Bind Source}" Description="{x:Bind Status}" Margin="0,0,0,8">
+                        <controls:SettingsExpander.HeaderIcon>
+                            <FontIcon Glyph="&#xE896;" />
+                        </controls:SettingsExpander.HeaderIcon>
+                        <controls:SettingsExpander.Content>
+                            <StackPanel Orientation="Horizontal" Spacing="12">
+                                <ProgressBar Value="{x:Bind Progress, Mode=OneWay}" Width="150" VerticalAlignment="Center" />
+                                <TextBlock Text="{x:Bind Progress, Mode=OneWay}" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </controls:SettingsExpander.Content>
+                        
+                        <controls:SettingsExpander.Items>
+                            <controls:SettingsCard Header="Actions">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <Button Content="Pause" Tag="{x:Bind Id}" Click="Pause_Click" />
+                                    <Button Content="Resume" Tag="{x:Bind Id}" Click="Resume_Click" />
+                                    <Button Content="Cancel" Tag="{x:Bind Id}" Click="Cancel_Click" />
+                                </StackPanel>
+                            </controls:SettingsCard>
+                        </controls:SettingsExpander.Items>
+                    </controls:SettingsExpander>
+                </DataTemplate>
+            </ListView.ItemTemplate>
+        </ListView>
+    </Grid>
+</Page>

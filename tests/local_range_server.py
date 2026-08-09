@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import http.server
 import re
+import socketserver
 import threading
 import time
 
@@ -51,6 +52,9 @@ def make_handler(data: bytes):
 
 
 def start_server(data: bytes, port: int = 8765) -> http.server.HTTPServer:
-    server = http.server.HTTPServer(("127.0.0.1", port), make_handler(data))
+    class ThreadingServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
+        daemon_threads = True
+
+    server = ThreadingServer(("127.0.0.1", port), make_handler(data))
     threading.Thread(target=server.serve_forever, daemon=True).start()
     return server

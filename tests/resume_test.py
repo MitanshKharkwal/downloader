@@ -14,7 +14,7 @@ from core.models import DownloadStatus, DownloadTask, DownloadType
 from local_range_server import start_server
 
 random.seed(42)
-DATA = bytes(random.getrandbits(8) for _ in range(600 * 1024))  # 600KB synthetic file
+DATA = bytes(random.getrandbits(8) for _ in range(3 * 1024 * 1024))  # 3MB synthetic file
 REF_HASH = hashlib.sha256(DATA).hexdigest()
 
 start_server(DATA, port=8765)

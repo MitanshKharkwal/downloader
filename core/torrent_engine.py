@@ -142,6 +142,16 @@ class TorrentDownload:
         if self._handle:
             flag = lt.session.delete_files if delete_files else 0
             self._session.remove_torrent(self._handle, flag)
+        elif delete_files:
+            try:
+                if os.path.exists(self.task.dest_path):
+                    if os.path.isdir(self.task.dest_path):
+                        import shutil
+                        shutil.rmtree(self.task.dest_path, ignore_errors=True)
+                    else:
+                        os.remove(self.task.dest_path)
+            except OSError:
+                pass
         self.task.status = DownloadStatus.CANCELED
         self.events.emit("status", self.task)
 
