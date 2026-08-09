@@ -86,7 +86,8 @@ def _make_handler(manager: 'DownloadManager', token: str):
                     self._send_json(400, {"ok": False, "error": "expected JSON body with a 'source' field"})
                     return
                 try:
-                    result = manager.add(body["source"])
+                    filename = body.get("filename")
+                    result = manager.add(body["source"], filename=filename)
                     self._send_json(200, {"ok": True, **result.to_dict()})
                 except Exception as exc:
                     self._send_json(500, {"ok": False, "error": str(exc)})
