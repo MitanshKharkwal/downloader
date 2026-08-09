@@ -35,6 +35,8 @@ while task.status not in (DownloadStatus.COMPLETED, DownloadStatus.ERROR):
         print("TIMEOUT")
         break
 
+assert task.status == DownloadStatus.COMPLETED, f"task failed with status {task.status}, error: {task.error_message}"
+
 print("status:", task.status, "error:", task.error_message)
 print("downloaded_bytes:", task.downloaded_bytes, "total_bytes:", task.total_bytes)
 print("progress events received:", len(progress_ticks))

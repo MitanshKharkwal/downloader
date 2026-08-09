@@ -69,12 +69,12 @@ def _try_launch_app() -> None:
             pass
 
 
-def post_to_app(source: str, filename: str | None = None, retries: int = 5, delay: float = 0.6) -> dict:
+def post_to_app(source: str, filename: str | None = None, headers: dict | None = None, retries: int = 5, delay: float = 0.6) -> dict:
     token = _read_token()
     if token is None:
         return {"ok": False, "error": "desktop app has never run -- no IPC token found yet"}
 
-    payload = json.dumps({"source": source, "filename": filename}).encode()
+    payload = json.dumps({"source": source, "filename": filename, "headers": headers or {}}).encode()
     launched = False
 
     def _try_once() -> dict | None:
@@ -97,7 +97,7 @@ def post_to_app(source: str, filename: str | None = None, retries: int = 5, dela
         if not launched:
             _try_launch_app()
             launched = True
-            # A cold Kivy start (GL/font init, etc.) can genuinely take
+            # A cold start (loading .NET runtime, font init, etc.) can genuinely take
             # several seconds -- give it real time to come up rather than
             # burning through the same short budget used for "app is
             # already running, just being briefly slow to respond".
@@ -122,7 +122,7 @@ def handle(message: dict) -> dict:
         source = message.get("source")
         if not source:
             return {"ok": False, "error": "missing 'source'"}
-        return post_to_app(source, filename=message.get("filename"))
+        return post_to_app(source, filename=message.get("filename"), headers=message.get("headers"))
 
     return {"ok": False, "error": f"unknown action: {action!r}"}
 

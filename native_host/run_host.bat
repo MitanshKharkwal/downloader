@@ -1,2 +1,7 @@
 @echo off
-where pythonw >nul 2>nul && (pythonw "C:\Users\mitan\Downloads\download_manager_1\download_manager\native_host\host.py") || (python "C:\Users\mitan\Downloads\download_manager_1\download_manager\native_host\host.py")
+cd /d "C:\Users\mitan\Downloads\download_manager_1\download_manager\native_host\.."
+if exist "venv\Scripts\python.exe" (
+    "venv\Scripts\python.exe" -u "C:\Users\mitan\Downloads\download_manager_1\download_manager\native_host\host.py"
+) else (
+    python -u "C:\Users\mitan\Downloads\download_manager_1\download_manager\native_host\host.py"
+)

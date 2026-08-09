@@ -62,13 +62,7 @@ public sealed partial class MainWindow : Window
         this.Activate();
     });
 
-    private void TrayOpen_Click(object sender, RoutedEventArgs e)
-    {
-        this.AppWindow.Show();
-        this.Activate();
-    }
-
-    private async void TrayExit_Click(object sender, RoutedEventArgs e)
+    public System.Windows.Input.ICommand ExitCommand => new RelayCommand(async () =>
     {
         try
         {
@@ -79,7 +73,7 @@ public sealed partial class MainWindow : Window
 
         TrayIcon.Dispose();
         Application.Current.Exit();
-    }
+    });
 }
 
 public class RelayCommand : System.Windows.Input.ICommand

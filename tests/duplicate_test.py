@@ -5,7 +5,6 @@ import sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 
 from download_manager.core.manager import DownloadManager
-from download_manager.core.models import DownloadStatus
 
 def test_duplicate_detection():
     dm = DownloadManager("test_duplicates_dir")

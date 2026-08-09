@@ -1,7 +1,6 @@
 import json
 import os
 import tempfile
-import threading
 import time
 import urllib.request
 
@@ -12,7 +11,6 @@ def test_shutdown():
     with tempfile.TemporaryDirectory() as tmpdir:
         state_file = os.path.join(tmpdir, "state.json")
         manager = DownloadManager(download_dir=tmpdir, state_file=state_file)
-        task = manager.add("http://example.com/file.zip")
         
         token_path = os.path.join(tmpdir, "token.txt")
         with open(token_path, "w") as f:

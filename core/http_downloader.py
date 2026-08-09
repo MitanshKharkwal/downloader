@@ -13,11 +13,14 @@ doesn't advertise Range support.
 from __future__ import annotations
 
 import json
+import mimetypes
 import os
+import re
+import sys
 import threading
 import time
 from collections import deque
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 import requests
 
@@ -93,8 +96,9 @@ class HttpDownload:
     def pause(self) -> None:
         if self.task.status not in (DownloadStatus.DOWNLOADING, DownloadStatus.CONNECTING, DownloadStatus.QUEUED):
             return  # already finished/errored/canceled -- nothing to pause
-        self._pause_event.clear()
         self.task.status = DownloadStatus.PAUSED
+        self._cancel_event.set()
+        self._pause_event.set()
         self._save_state()
         self.events.emit("status", self.task)
 
@@ -102,8 +106,11 @@ class HttpDownload:
         if self.task.status != DownloadStatus.PAUSED:
             return
         self.task.status = DownloadStatus.DOWNLOADING
+        self._cancel_event.clear()
         self._pause_event.set()
         self.events.emit("status", self.task)
+        self._controller_thread = threading.Thread(target=self._run, daemon=True)
+        self._controller_thread.start()
 
     def cancel(self, delete_files: bool = False) -> None:
         self._delete_on_cancel = delete_files
@@ -117,16 +124,9 @@ class HttpDownload:
         self._cancel_event.set()
         self._pause_event.set()
         
-        # If the controller thread is dead/never started, delete immediately.
+        # If the controller thread is dead/never started, cleanup immediately.
         if not self._controller_thread or not self._controller_thread.is_alive():
             self._cleanup_state_file()
-            if delete_files:
-                for path in (self._part_path, self.task.dest_path):
-                    try:
-                        if os.path.exists(path):
-                            os.remove(path)
-                    except OSError:
-                        pass
 
     # -- internals -------------------------------------------------------
 
@@ -156,8 +156,15 @@ class HttpDownload:
             ]
             for t in self._threads:
                 t.start()
-            for t in self._threads:
-                t.join()
+                
+            while any(t.is_alive() for t in self._threads):
+                if self._cancel_event.is_set():
+                    for t in self._threads:
+                        t.join(timeout=2.0)
+                    break
+                self._tune_segments()
+                # Use wait instead of sleep to allow faster exit on cancel
+                self._cancel_event.wait(1.0)
 
             if self._cancel_event.is_set():
                 return
@@ -179,7 +186,7 @@ class HttpDownload:
             self.events.emit("status", self.task)
             self.events.emit("error", self.task, exc)
         finally:
-            if self._cancel_event.is_set():
+            if self.task.status == DownloadStatus.CANCELED:
                 self._cleanup_state_file()
                 if getattr(self, "_delete_on_cancel", False):
                     for path in (self._part_path, self.task.dest_path):
@@ -197,21 +204,81 @@ class HttpDownload:
                     state = json.load(f)
                 part_size_ok = os.path.getsize(self._part_path) == state.get("total_bytes")
                 if state.get("source") == self.task.source and part_size_ok:
-                    self._segments = [_Segment(**s) for s in state["segments"]]
-                    self.task.total_bytes = state["total_bytes"]
-                    self.task.downloaded_bytes = sum(s.downloaded for s in self._segments)
-                    self.task.supports_ranges = state.get("supports_ranges", True)
-                    self._etag = state.get("etag")
-                    self._last_modified = state.get("last_modified")
-                    return True
+                    try:
+                        probe_headers = dict(self.extra_headers)
+                        with requests.head(self.task.source, headers=probe_headers, allow_redirects=True, timeout=15) as head_resp:
+                            if head_resp.status_code == 200:
+                                current_etag = head_resp.headers.get("ETag")
+                                current_lm = head_resp.headers.get("Last-Modified")
+                                if (state.get("etag") and current_etag and state.get("etag") != current_etag) or \
+                                   (state.get("last_modified") and current_lm and state.get("last_modified") != current_lm):
+                                    raise ValueError("ETag/Last-Modified mismatch")
+                    except (requests.RequestException, ValueError):
+                        pass  # network error or mismatch, fall through to fresh probe
+                    else:
+                        self._segments = [_Segment(**s) for s in state["segments"]]
+                        self.task.total_bytes = state["total_bytes"]
+                        self.task.downloaded_bytes = sum(s.downloaded for s in self._segments)
+                        self.task.supports_ranges = state.get("supports_ranges", True)
+                        self._etag = state.get("etag")
+                        self._last_modified = state.get("last_modified")
+                        return True
             except (json.JSONDecodeError, KeyError, TypeError):
                 pass  # corrupt sidecar, fall through to a fresh probe
 
-        resp = requests.head(self.task.source, headers=self.extra_headers, allow_redirects=True, timeout=15)
-        accepts_ranges = resp.headers.get("Accept-Ranges", "").lower() == "bytes"
-        total = int(resp.headers.get("Content-Length", 0))
-        self._etag = resp.headers.get("ETag")
-        self._last_modified = resp.headers.get("Last-Modified")
+        probe_headers = dict(self.extra_headers)
+        probe_headers["Range"] = "bytes=0-0"
+        
+        with requests.get(self.task.source, headers=probe_headers, stream=True, allow_redirects=True, timeout=15) as resp:
+            accepts_ranges = (resp.status_code == 206)
+            
+            if accepts_ranges:
+                cr = resp.headers.get("Content-Range", "")
+                total_str = cr.split("/")[-1] if "/" in cr else "0"
+                total = int(total_str) if total_str.isdigit() else 0
+            else:
+                total = int(resp.headers.get("Content-Length", 0))
+                
+            self._etag = resp.headers.get("ETag")
+            self._last_modified = resp.headers.get("Last-Modified")
+
+            new_name = None
+            cd = resp.headers.get("Content-Disposition", "")
+            if cd:
+                import urllib.parse
+                m = re.search(r"filename\*=UTF-8''([^; ]+)", cd, re.IGNORECASE)
+                if m:
+                    new_name = urllib.parse.unquote(m.group(1))
+                else:
+                    m = re.search(r'filename="([^"]+)"', cd)
+                    if not m:
+                        m = re.search(r'filename=([^; ]+)', cd)
+                    if m:
+                        new_name = m.group(1)
+            
+            if not new_name and not os.path.splitext(self.task.dest_path)[1]:
+                ct = resp.headers.get("Content-Type", "").split(";")[0].strip()
+                if ct:
+                    ext = mimetypes.guess_extension(ct)
+                    if ext:
+                        if ext == ".htm": ext = ".html"
+                        new_name = os.path.basename(self.task.dest_path) + ext
+
+            if new_name and new_name != os.path.basename(self.task.dest_path):
+                new_name = re.sub(r'[<>:"/\\|?*]', '_', new_name)
+                if len(new_name) > 150:
+                    base, ext = os.path.splitext(new_name)
+                    if len(ext) > 20: ext = ""
+                    new_name = base[:150 - len(ext)] + ext
+                dest_dir = os.path.dirname(self.task.dest_path)
+                target_path = os.path.join(dest_dir, new_name)
+                base, ext = os.path.splitext(new_name)
+                counter = 1
+                while os.path.exists(target_path) or os.path.exists(target_path + ".dmpart"):
+                    target_path = os.path.join(dest_dir, f"{base} ({counter}){ext}")
+                    counter += 1
+                self.task.dest_path = target_path
+                self.events.emit("status", self.task)
 
         if total <= 0 or not accepts_ranges:
             # Server can't or won't do ranged requests -- single stream, no
@@ -219,7 +286,8 @@ class HttpDownload:
             self.task.supports_ranges = False
             self.task.total_bytes = total
             self.task.downloaded_bytes = 0
-            self._segments = [_Segment(0, max(total - 1, 0))]
+            segment_end = sys.maxsize if (total <= 0 and not accepts_ranges) else max(total - 1, 0)
+            self._segments = [_Segment(0, segment_end)]
             self.num_connections = 1
             return True
 
@@ -243,10 +311,17 @@ class HttpDownload:
 
     def _allocate_file(self) -> None:
         os.makedirs(os.path.dirname(os.path.abspath(self.task.dest_path)) or ".", exist_ok=True)
-        if not os.path.exists(self._part_path) or os.path.getsize(self._part_path) != self.task.total_bytes:
-            with open(self._part_path, "wb") as f:
-                if self.task.total_bytes > 0:
+        try:
+            if self.task.total_bytes <= 0:
+                if not os.path.exists(self._part_path):
+                    open(self._part_path, "wb").close()
+            elif not os.path.exists(self._part_path) or os.path.getsize(self._part_path) != self.task.total_bytes:
+                with open(self._part_path, "wb") as f:
                     f.truncate(self.task.total_bytes)
+        except OSError as e:
+            if getattr(e, "errno", None) == 28:
+                raise RuntimeError("Out of disk space (ENOSPC) during file allocation.") from e
+            raise
 
     def _download_segment(self, seg: _Segment) -> None:
         headers = dict(self.extra_headers)
@@ -274,6 +349,11 @@ class HttpDownload:
                                 continue
                             
                             n = len(chunk)
+                            remaining = (seg.end - seg.start + 1) - seg.downloaded
+                            if remaining > 0 and n > remaining:
+                                chunk = chunk[:remaining]
+                                n = remaining
+
                             if self.rate_limiter:
                                 self.rate_limiter.consume(n)
                             
@@ -291,7 +371,29 @@ class HttpDownload:
                                     # after a fully successful download.
                                     self.task.total_bytes = self.task.downloaded_bytes
                             self.events.emit("progress", self.task)
+                            
+                            if seg.done:
+                                break
+                        else:
+                            if not self.task.supports_ranges and self.task.total_bytes <= 0:
+                                seg.end = seg.start + seg.downloaded - 1
+                                self.task.total_bytes = self.task.downloaded_bytes
                 except requests.RequestException as exc:
+                    if isinstance(exc, requests.HTTPError) and exc.response is not None:
+                        if exc.response.status_code in (401, 403):
+                            self.task.error_message = f"Access Denied / Expired URL (HTTP {exc.response.status_code})"
+                            self._cancel_event.set()
+                            self._pause_event.set()
+                            self.task.status = DownloadStatus.ERROR
+                            self.events.emit("status", self.task)
+                            return
+                        elif exc.response.status_code == 429:
+                            self.task.error_message = "Rate Limited (HTTP 429)"
+                            self._cancel_event.set()
+                            self._pause_event.set()
+                            self.task.status = DownloadStatus.ERROR
+                            self.events.emit("status", self.task)
+                            return
                     consecutive_failures += 1
                     if consecutive_failures >= MAX_CONSECUTIVE_SEGMENT_FAILURES:
                         # A host that keeps rejecting/resetting the connection
@@ -331,6 +433,42 @@ class HttpDownload:
             if self.task.status == DownloadStatus.COMPLETED:
                 break
             time.sleep(0.5)
+
+    def _tune_segments(self) -> None:
+        if not self.task.supports_ranges or self.task.total_bytes <= 0:
+            return
+            
+        with self._lock:
+            active_threads = sum(1 for t in self._threads if t.is_alive())
+            if active_threads >= self.num_connections:
+                return
+                
+            # Find the segment with the largest remaining bytes
+            largest_seg = None
+            max_remaining = 0
+            
+            for seg in self._segments:
+                if not seg.done:
+                    rem = seg.end - seg.remaining_start
+                    if rem > max_remaining:
+                        max_remaining = rem
+                        largest_seg = seg
+                        
+            # If the largest remaining is > 2MB, split it
+            MIN_SPLIT_SIZE = 1024 * 1024
+            if largest_seg and max_remaining > MIN_SPLIT_SIZE * 2:
+                midpoint = largest_seg.remaining_start + (max_remaining // 2)
+                new_seg = _Segment(start=midpoint, end=largest_seg.end)
+                
+                # Update old segment
+                largest_seg.end = midpoint - 1
+                
+                self._segments.append(new_seg)
+                
+                # Start a new thread
+                t = threading.Thread(target=self._download_segment, args=(new_seg,), daemon=True)
+                self._threads.append(t)
+                t.start()
 
     def _save_state(self) -> None:
         state = {

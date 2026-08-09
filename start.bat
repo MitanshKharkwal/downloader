@@ -12,7 +12,7 @@ if exist "venv\Scripts\pythonw.exe" (
 )
 
 echo [2/2] Starting C# WinUI 3 Frontend...
-start "" "DownloadManagerUI\bin\Debug\net8.0-windows10.0.26100.0\win-x64\DownloadManagerUI.exe"
+start "" "DownloadManagerUI\bin\Release\net8.0-windows10.0.26100.0\win-x64\DownloadManagerUI.exe"
 
 echo.
 echo Launching complete.

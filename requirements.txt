@@ -9,3 +9,7 @@ libtorrent>=2.0
 # versions. If pip tries to build from source, install the
 # libtorrent-rasterbar system package first (Windows: see
 # https://www.libtorrent.org/building.html for prebuilt options).
+
+pytest==8.1.1
+# Video downloading
+yt-dlp>=2023.12.30

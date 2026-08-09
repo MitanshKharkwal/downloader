@@ -5,6 +5,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:local="using:DownloadManagerUI"
+    xmlns:models="using:DownloadManagerUI.Models"
     xmlns:controls="using:CommunityToolkit.WinUI.Controls"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
@@ -19,6 +20,20 @@
         <StackPanel Orientation="Vertical" Spacing="4" Margin="0,0,0,24">
             <TextBlock Text="Downloads" Style="{StaticResource TitleTextBlockStyle}" />
             <TextBlock Text="Manage and monitor your active downloads" Style="{StaticResource BodyTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+            <InfoBar x:Name="DaemonOfflineBar" 
+                     Title="Daemon Offline" 
+                     Message="The download manager background service is not running. Please launch start.bat." 
+                     Severity="Error" 
+                     IsOpen="False" 
+                     IsClosable="False" 
+                     Margin="0,12,0,0"/>
+            <InfoBar x:Name="LoadingVideoBar" 
+                     Title="Fetching Video Info..." 
+                     Message="Please wait, retrieving available formats from yt-dlp..." 
+                     Severity="Informational" 
+                     IsOpen="False" 
+                     IsClosable="False" 
+                     Margin="0,12,0,0"/>
         </StackPanel>
 
         <Grid Grid.Row="1" Margin="0,0,0,24" ColumnSpacing="8">
@@ -26,24 +41,34 @@
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
             
-            <TextBox x:Name="UrlInput" PlaceholderText="Paste a URL or magnet link" VerticalAlignment="Center" KeyDown="UrlInput_KeyDown" />
-            <Button Grid.Column="1" Content="Clear Finished" Click="ClearFinished_Click" />
-            <Button Grid.Column="2" Content="Download" Style="{StaticResource AccentButtonStyle}" Click="AddDownload_Click" />
+            <TextBox x:Name="UrlInput" PlaceholderText="Enter download URL or magnet link..." KeyDown="UrlInput_KeyDown" />
+            <Button Grid.Column="1" Content="Download" Style="{StaticResource AccentButtonStyle}" Click="AddDownload_Click" />
+            <Button Grid.Column="2" Content="Pause All" Click="PauseAll_Click" Margin="4,0,0,0" />
+            <Button Grid.Column="3" Content="Resume All" Click="ResumeAll_Click" Margin="4,0,0,0" />
+            <Button Grid.Column="4" Content="Clear Finished" Click="ClearFinished_Click" Margin="4,0,0,0" />
         </Grid>
 
         <ListView x:Name="TasksList" Grid.Row="2" ItemsSource="{x:Bind Tasks}" SelectionMode="None">
             <ListView.ItemTemplate>
-                <DataTemplate x:DataType="local:Models.DownloadTask">
-                    <controls:SettingsExpander Header="{x:Bind Source}" Description="{x:Bind Status}" Margin="0,0,0,8">
+                <DataTemplate x:DataType="models:DownloadTask">
+                    <controls:SettingsExpander Header="{x:Bind Filename, Mode=OneWay}" Description="{x:Bind Status, Mode=OneWay}" Margin="0,0,0,8">
                         <controls:SettingsExpander.HeaderIcon>
                             <FontIcon Glyph="&#xE896;" />
                         </controls:SettingsExpander.HeaderIcon>
                         <controls:SettingsExpander.Content>
-                            <StackPanel Orientation="Horizontal" Spacing="12">
-                                <ProgressBar Value="{x:Bind Progress, Mode=OneWay}" Width="150" VerticalAlignment="Center" />
-                                <TextBlock Text="{x:Bind Progress, Mode=OneWay}" VerticalAlignment="Center" />
+                            <StackPanel Orientation="Vertical" Spacing="8" VerticalAlignment="Center">
+                                <StackPanel Orientation="Horizontal" Spacing="12">
+                                    <ProgressBar Value="{x:Bind Progress, Mode=OneWay}" Width="150" VerticalAlignment="Center" />
+                                    <TextBlock Text="{x:Bind ProgressText, Mode=OneWay}" VerticalAlignment="Center" Width="45"/>
+                                    <TextBlock Text="{x:Bind SizeText, Mode=OneWay}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" />
+                                    <TextBlock Text="{x:Bind SpeedText, Mode=OneWay}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" />
+                                    <TextBlock Text="{x:Bind ETAText, Mode=OneWay}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" Margin="12,0,0,0"/>
+                                </StackPanel>
+                                <TextBlock Text="{x:Bind Error, Mode=OneWay}" Foreground="Red" TextWrapping="Wrap" Visibility="{x:Bind ErrorVisibility, Mode=OneWay}" />
                             </StackPanel>
                         </controls:SettingsExpander.Content>
                         
@@ -52,7 +77,14 @@
                                 <StackPanel Orientation="Horizontal" Spacing="8">
                                     <Button Content="Pause" Tag="{x:Bind Id}" Click="Pause_Click" />
                                     <Button Content="Resume" Tag="{x:Bind Id}" Click="Resume_Click" />
+                                    <Button Content="Retry" Tag="{x:Bind Id}" Click="Retry_Click" />
                                     <Button Content="Cancel" Tag="{x:Bind Id}" Click="Cancel_Click" />
+                                </StackPanel>
+                            </controls:SettingsCard>
+                            <controls:SettingsCard Header="Tools">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <Button Content="Open Folder" Tag="{x:Bind FilePath}" Click="OpenFolder_Click" />
+                                    <Button Content="Copy URL" Tag="{x:Bind Source}" Click="CopyUrl_Click" />
                                 </StackPanel>
                             </controls:SettingsCard>
                         </controls:SettingsExpander.Items>
@@ -60,5 +92,29 @@
                 </DataTemplate>
             </ListView.ItemTemplate>
         </ListView>
+        
+        <ContentDialog x:Name="VideoFormatDialog"
+                       Title="Select Video Quality"
+                       PrimaryButtonText="Download"
+                       CloseButtonText="Cancel"
+                       DefaultButton="Primary">
+            <StackPanel Spacing="12">
+                <TextBlock x:Name="VideoTitleText" TextWrapping="Wrap" FontWeight="SemiBold" />
+                <ComboBox x:Name="VideoTypeComboBox" Header="Download Type" Width="400" SelectedIndex="0">
+                    <x:String>Video + Audio</x:String>
+                    <x:String>Audio Only</x:String>
+                    <x:String>Video Only</x:String>
+                </ComboBox>
+                <ComboBox x:Name="VideoQualityComboBox" Header="Max Quality" Width="400" SelectedIndex="3">
+                    <x:String>Best Available</x:String>
+                    <x:String>4K (2160p)</x:String>
+                    <x:String>1440p</x:String>
+                    <x:String>1080p</x:String>
+                    <x:String>720p</x:String>
+                    <x:String>480p</x:String>
+                    <x:String>360p</x:String>
+                </ComboBox>
+            </StackPanel>
+        </ContentDialog>
     </Grid>
 </Page>

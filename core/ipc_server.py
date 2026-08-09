@@ -22,7 +22,6 @@ import os
 import secrets
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
-from typing import Callable, Any
 
 # Ensure we can type hint DownloadManager without circular imports
 from typing import TYPE_CHECKING
@@ -87,7 +86,8 @@ def _make_handler(manager: 'DownloadManager', token: str):
                     return
                 try:
                     filename = body.get("filename")
-                    result = manager.add(body["source"], filename=filename)
+                    headers = body.get("headers")
+                    result = manager.add(body["source"], filename=filename, headers=headers)
                     self._send_json(200, {"ok": True, **result.to_dict()})
                 except Exception as exc:
                     self._send_json(500, {"ok": False, "error": str(exc)})
@@ -107,18 +107,67 @@ def _make_handler(manager: 'DownloadManager', token: str):
                                 "source": task.source,
                                 "status": task.status.name,
                                 "priority": task.priority.name,
-                                "downloaded_bytes": task.downloaded_bytes,
-                                "total_bytes": task.total_bytes,
-                                "speed_bps": task.speed_bps,
-                                "file_path": task.dest_path,
-                                "error": task.error_message
+                                "downloaded_bytes": task.downloaded_bytes or 0,
+                                "total_bytes": task.total_bytes or 0,
+                                "speed_bps": task.speed_bps or 0.0,
+                                "file_path": task.dest_path or "",
+                                "error": task.error_message or ""
                             })
                         self._send_json(200, {"ok": True, "tasks": tasks})
+                    elif method == "add_video_task":
+                        # source format: ytdlp||format_id||url
+                        url = args["url"]
+                        format_id = args.get("format_id", "best")
+                        source = f"ytdlp||{format_id}||{url}"
+                        # Need to bypass manager.add since it assumes HTTP or Torrent based on regex/extension
+                        # Let's just create a DownloadTask and insert it directly
+                        from core.models import DownloadTask, DownloadType
+                        name = args.get("filename", "video.mp4")
+                        final_dest_dir = os.path.join(manager.download_dir, "Video")
+                        os.makedirs(final_dest_dir, exist_ok=True)
+                        base, ext = os.path.splitext(name)
+                        target_path = os.path.join(final_dest_dir, name)
+                        counter = 1
+                        while os.path.exists(target_path) or os.path.exists(target_path + ".dmpart"):
+                            target_path = os.path.join(final_dest_dir, f"{base} ({counter}){ext}")
+                            counter += 1
+                            
+                        task = DownloadTask(
+                            source=source,
+                            dest_path=target_path,
+                            type=DownloadType.VIDEO
+                        )
+                        with manager._lock:
+                            manager._tasks[task.id] = task
+                        manager._save_state()
+                        manager.events.emit("added", task)
+                        manager._maybe_start_next()
+                        self._send_json(200, {"ok": True, "id": task.id})
+
+                    elif method == "fetch_video_info":
+                        import yt_dlp
+                        url = args.get("url")
+                        ydl_opts = {'quiet': True, 'no_warnings': True}
+                        try:
+                            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                                info = ydl.extract_info(url, download=False)
+                                self._send_json(200, {"ok": True, "title": info.get("title", "Video")})
+                        except Exception as e:
+                            self._send_json(500, {"ok": False, "error": str(e)})
+
                     elif method == "pause":
                         manager.pause(args["task_id"])
                         self._send_json(200, {"ok": True})
                     elif method == "resume":
-                        manager.resume(args["task_id"])
+                        task_id = args.get("task_id")
+                        if task_id:
+                            manager.resume(task_id)
+                        self._send_json(200, {"ok": True})
+                    elif method == "pause_all":
+                        manager.pause_all()
+                        self._send_json(200, {"ok": True})
+                    elif method == "resume_all":
+                        manager.resume_all()
                         self._send_json(200, {"ok": True})
                     elif method == "cancel":
                         manager.cancel(args["task_id"])
@@ -134,6 +183,11 @@ def _make_handler(manager: 'DownloadManager', token: str):
                         self._send_json(200, {"ok": True})
                         import threading
                         threading.Timer(0.5, lambda: __import__('os')._exit(0)).start()
+                    elif method == "get_config":
+                        self._send_json(200, {"ok": True, "config": manager.get_config()})
+                    elif method == "set_config":
+                        manager.set_config(args.get("config", {}))
+                        self._send_json(200, {"ok": True})
                     else:
                         self._send_json(400, {"ok": False, "error": "unknown method"})
                 except Exception as exc:

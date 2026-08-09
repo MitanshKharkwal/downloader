@@ -11,6 +11,7 @@ from enum import Enum
 class DownloadType(str, Enum):
     HTTP = "http"
     TORRENT = "torrent"
+    VIDEO = "video"
 
 
 class DownloadStatus(str, Enum):
@@ -59,6 +60,7 @@ class DownloadTask:
     name: str = ""
 
     error_message: str = ""
+    headers: dict[str, str] = field(default_factory=dict)
     created_at: float = field(default_factory=time.time)
     completed_at: float | None = None
 

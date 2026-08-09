@@ -27,8 +27,8 @@
             LeftClickCommand="{x:Bind ShowWindowCommand}">
             <tb:TaskbarIcon.ContextFlyout>
                 <MenuFlyout>
-                    <MenuFlyoutItem Text="Open" Click="TrayOpen_Click"/>
-                    <MenuFlyoutItem Text="Exit" Click="TrayExit_Click"/>
+                    <MenuFlyoutItem Text="Open" Command="{x:Bind ShowWindowCommand}"/>
+                    <MenuFlyoutItem Text="Exit" Command="{x:Bind ExitCommand}"/>
                 </MenuFlyout>
             </tb:TaskbarIcon.ContextFlyout>
         </tb:TaskbarIcon>

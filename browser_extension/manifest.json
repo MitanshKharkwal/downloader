@@ -3,7 +3,7 @@
   "name": "Download Manager Capture",
   "version": "0.1.0",
   "description": "Sends downloads and magnet links to the Download Manager desktop app.",
-  "permissions": ["downloads", "contextMenus", "storage", "nativeMessaging"],
+  "permissions": ["downloads", "contextMenus", "storage", "nativeMessaging", "alarms", "cookies"],
   "host_permissions": ["<all_urls>"],
   "background": {
     "service_worker": "background.js"

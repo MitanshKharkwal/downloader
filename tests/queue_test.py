@@ -10,6 +10,9 @@ from core.manager import DownloadManager
 from core.models import DownloadStatus
 from local_range_server import start_server
 
+import shutil
+shutil.rmtree("queue_out", ignore_errors=True)
+
 random.seed(1)
 DATA = bytes(random.getrandbits(8) for _ in range(3 * 1024 * 1024))
 start_server(DATA, port=8766)

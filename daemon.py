@@ -4,6 +4,11 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+log_path = os.path.join(os.path.expanduser("~"), ".download_manager", "daemon.log")
+sys.stdout = open(log_path, "a", encoding="utf-8")
+sys.stderr = sys.stdout
+
+
 from core.manager import DownloadManager
 from core.ipc_server import IpcServer, load_or_create_token
 

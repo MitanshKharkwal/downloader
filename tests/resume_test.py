@@ -54,6 +54,7 @@ while task.status not in (DownloadStatus.COMPLETED, DownloadStatus.ERROR):
         print("TIMEOUT")
         break
 
+assert task.status == DownloadStatus.COMPLETED, f"task failed with status {task.status}, error: {task.error_message}"
 final_hash = hashlib.sha256(open(dest, "rb").read()).hexdigest()
 print("final status:", task.status)
 print("final bytes:", task.downloaded_bytes, "/", task.total_bytes)

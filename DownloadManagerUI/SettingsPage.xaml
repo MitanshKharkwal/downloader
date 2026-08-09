@@ -8,7 +8,22 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
 
-    <Grid>
-        <TextBlock Text="Settings" FontSize="24" Margin="24"/>
+    <Grid Padding="24">
+        <StackPanel Orientation="Vertical" Spacing="24" MaxWidth="600" HorizontalAlignment="Left">
+            <StackPanel Orientation="Vertical" Spacing="4">
+                <TextBlock Text="Settings" Style="{StaticResource TitleTextBlockStyle}" />
+                <TextBlock Text="Configure global application preferences" Style="{StaticResource BodyTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+            </StackPanel>
+
+            <StackPanel Spacing="16">
+                <TextBox x:Name="DownloadDirInput" Header="Download Directory" PlaceholderText="C:\Downloads" />
+                <NumberBox x:Name="MaxConcurrentInput" Header="Max Concurrent Downloads" Minimum="1" Maximum="20" SpinButtonPlacementMode="Inline" />
+                <NumberBox x:Name="SpeedLimitInput" Header="Global Speed Limit (Bytes/s, 0 for unlimited)" Minimum="0" SpinButtonPlacementMode="Inline" />
+                
+                <Button Content="Save Settings" Style="{StaticResource AccentButtonStyle}" Click="SaveSettings_Click" Margin="0,16,0,0"/>
+                
+                <InfoBar x:Name="SaveSuccessBar" Title="Settings saved" Severity="Success" IsOpen="False" />
+            </StackPanel>
+        </StackPanel>
     </Grid>
 </Page>

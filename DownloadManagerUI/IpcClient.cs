@@ -3,6 +3,7 @@ using System.IO;
 using System.Net.Http;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization.Metadata;
 using System.Threading.Tasks;
 using DownloadManagerUI.Models;
 using System.Collections.ObjectModel;
@@ -38,14 +39,24 @@ public class IpcClient
         if (string.IsNullOrEmpty(_token)) LoadToken();
         var url = $"http://127.0.0.1:{_port}/rpc";
         var payload = new { method, args = args ?? new { } };
-        var json = JsonSerializer.Serialize(payload);
+        var options = new JsonSerializerOptions { TypeInfoResolver = new DefaultJsonTypeInfoResolver() };
+        var json = JsonSerializer.Serialize(payload, options);
         var content = new StringContent(json, Encoding.UTF8, "application/json");
 
         var response = await _client.PostAsync(url, content);
         response.EnsureSuccessStatusCode();
-        
+
         var respString = await response.Content.ReadAsStringAsync();
-        return JsonSerializer.Deserialize<JsonElement>(respString);
+        try
+        {
+            var options2 = new JsonSerializerOptions { TypeInfoResolver = new DefaultJsonTypeInfoResolver() };
+            return JsonSerializer.Deserialize<JsonElement>(respString, options2);
+        }
+        catch (Exception ex)
+        {
+            System.IO.File.AppendAllText("c:\\Users\\mitan\\Downloads\\download_manager_1\\download_manager\\ui_errors.log", $"SendRpc parse failed for {method}. Resp: {respString}. Ex: {ex}\n");
+            throw;
+        }
     }
 
     public async Task<List<DownloadTask>> ListTasksAsync()
@@ -55,12 +66,17 @@ public class IpcClient
             var res = await SendRpc("list_tasks");
             if (res.TryGetProperty("tasks", out var tasksElement))
             {
-                return JsonSerializer.Deserialize<List<DownloadTask>>(tasksElement.GetRawText(), 
-                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new List<DownloadTask>();
+                var options = new JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true,
+                    TypeInfoResolver = new DefaultJsonTypeInfoResolver()
+                };
+                return JsonSerializer.Deserialize<List<DownloadTask>>(tasksElement.GetRawText(), options) ?? new List<DownloadTask>();
             }
         }
         catch (Exception ex)
         {
+            System.IO.File.AppendAllText("c:\\Users\\mitan\\Downloads\\download_manager_1\\download_manager\\ui_errors.log", $"ListTasksAsync failed: {ex}\n");
             System.Diagnostics.Debug.WriteLine($"ListTasksAsync failed: {ex.Message}");
         }
         return new List<DownloadTask>();
@@ -68,17 +84,39 @@ public class IpcClient
 
     public async Task AddTaskAsync(string url)
     {
-        // Add endpoint uses legacy path for now or we can use RPC
+        if (string.IsNullOrEmpty(_token)) LoadToken();
         var apiUrl = $"http://127.0.0.1:{_port}/add";
         var payload = new { source = url };
-        var json = JsonSerializer.Serialize(payload);
+        var options = new JsonSerializerOptions { TypeInfoResolver = new DefaultJsonTypeInfoResolver() };
+        var json = JsonSerializer.Serialize(payload, options);
         var content = new StringContent(json, Encoding.UTF8, "application/json");
         await _client.PostAsync(apiUrl, content);
     }
 
+    public async Task<JsonElement> FetchVideoInfoAsync(string url) => await SendRpc("fetch_video_info", new { url });
+    public async Task AddVideoTaskAsync(string url, string formatId, string filename) => await SendRpc("add_video_task", new { url, format_id = formatId, filename });
+
     public async Task PauseTaskAsync(string id) => await SendRpc("pause", new { task_id = id });
     public async Task ResumeTaskAsync(string id) => await SendRpc("resume", new { task_id = id });
+    public async Task RetryTaskAsync(string id) => await SendRpc("retry", new { task_id = id });
     public async Task CancelTaskAsync(string id) => await SendRpc("cancel", new { task_id = id });
     public async Task ClearFinishedAsync() => await SendRpc("clear_finished");
+
+    public async Task PauseAllAsync() => await SendRpc("pause_all");
+    public async Task ResumeAllAsync() => await SendRpc("resume_all");
+
+    public async Task<AppConfig> GetConfigAsync()
+    {
+        var res = await SendRpc("get_config");
+        if (res.TryGetProperty("config", out var configElement))
+        {
+            var options = new JsonSerializerOptions { TypeInfoResolver = new DefaultJsonTypeInfoResolver() };
+            return JsonSerializer.Deserialize<AppConfig>(configElement.GetRawText(), options) ?? new AppConfig();
+        }
+        return new AppConfig();
+    }
+
+    public async Task SetConfigAsync(AppConfig config) => await SendRpc("set_config", new { config });
+
     public async Task ShutdownAsync() => await SendRpc("shutdown");
 }

@@ -1,6 +1,9 @@
 import os
 import sys
 import time
+import tempfile
+import sys
+import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -16,8 +19,9 @@ start_server(DATA, port=8988)
 time.sleep(0.2)
 URL = "http://127.0.0.1:8988/file.bin"
 
-test_dir = "/tmp/persist_test"
-os.system(f"rm -rf {test_dir}")
+import shutil
+test_dir = os.path.join(tempfile.gettempdir(), "persist_test")
+shutil.rmtree(test_dir, ignore_errors=True)
 os.makedirs(test_dir, exist_ok=True)
 
 # --- Test 1: deterministic filename -------------------------------------
@@ -30,8 +34,13 @@ assert name1 == name2
 # --- Test 2: state persists across a manager restart ----------------------
 m1 = DownloadManager(download_dir=test_dir, max_concurrent_downloads=1)
 t1 = m1.add(URL, filename="download1.bin")  # will actually start downloading
-t2 = m1.add(URL, filename="download2.bin")  # stays QUEUED (max_concurrent=1)
-time.sleep(0.6)
+t2 = m1.add(URL + "?v=2", filename="download2.bin")  # stays QUEUED (max_concurrent=1)
+
+start_wait = time.time()
+while m1.get(t1.id).downloaded_bytes == 0 and time.time() - start_wait < 5.0:
+    time.sleep(0.1)
+time.sleep(0.2)
+
 
 print(f"\nbefore restart: t1={m1.get(t1.id).status.value}  t2={m1.get(t2.id).status.value}")
 assert m1.get(t1.id).status == DownloadStatus.DOWNLOADING
@@ -62,20 +71,27 @@ assert final.downloaded_bytes >= r1.downloaded_bytes, "resume should not lose al
 m2.shutdown()
 
 # --- Test 3: cancel deletes the partial file -------------------------------
-os.system(f"rm -rf {test_dir}/cancel_test && mkdir -p {test_dir}/cancel_test")
-m3 = DownloadManager(download_dir=f"{test_dir}/cancel_test", max_concurrent_downloads=1)
+cancel_dir = os.path.join(test_dir, "cancel_test")
+shutil.rmtree(cancel_dir, ignore_errors=True)
+os.makedirs(cancel_dir, exist_ok=True)
+m3 = DownloadManager(download_dir=cancel_dir, max_concurrent_downloads=1)
 t3 = m3.add(URL, filename="to_cancel.bin")
 print(f"\nt3 status right after add: {m3.get(t3.id).status.value}, error: {m3.get(t3.id).error_message!r}")
 time.sleep(0.3)
 t3_now = m3.get(t3.id)
 print(f"t3 status after 0.3s: {t3_now.status.value}, downloaded: {t3_now.downloaded_bytes}, error: {t3_now.error_message!r}")
-part_path = os.path.join(f"{test_dir}/cancel_test", "to_cancel.bin.part")
-print(f"dir contents: {os.listdir(f'{test_dir}/cancel_test')}")
+part_path = os.path.join(cancel_dir, "Other", "to_cancel.bin.part")
+print(f"dir contents: {os.listdir(cancel_dir)}")
 print(f"part file exists before cancel: {os.path.exists(part_path)}")
 assert os.path.exists(part_path)
 
 m3.cancel(t3.id)
-time.sleep(0.3)
+
+for _ in range(30):
+    if not os.path.exists(part_path):
+        break
+    time.sleep(0.1)
+    
 print(f"part file exists after cancel: {os.path.exists(part_path)}")
 assert not os.path.exists(part_path), "canceling should clean up the partial file"
 

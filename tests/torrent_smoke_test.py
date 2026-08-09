@@ -6,7 +6,6 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import time
 
 from core.manager import DownloadManager
-from core.models import DownloadStatus
 
 # A well-known, legal public-domain test magnet (Big Buck Bunny sample, widely
 # used as a BitTorrent protocol test fixture).

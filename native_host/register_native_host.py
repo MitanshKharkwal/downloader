@@ -33,11 +33,16 @@ THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 def write_wrapper_bat() -> str:
     bat_path = os.path.join(THIS_DIR, "run_host.bat")
     host_py = os.path.join(THIS_DIR, "host.py")
-    # pythonw avoids flashing a console window every time a magnet link
-    # is clicked; falls back to python.exe if pythonw isn't on PATH.
+    # python.exe with -u is required for unbuffered I/O with native messaging pipes.
+    # venv python is preferred, falls back to system python
     content = (
         "@echo off\r\n"
-        f'where pythonw >nul 2>nul && (pythonw "{host_py}") || (python "{host_py}")\r\n'
+        f"cd /d \"{THIS_DIR}\\..\"\r\n"
+        f"if exist \"venv\\Scripts\\python.exe\" (\r\n"
+        f"    \"venv\\Scripts\\python.exe\" -u \"{host_py}\"\r\n"
+        f") else (\r\n"
+        f"    python -u \"{host_py}\"\r\n"
+        f")\r\n"
     )
     with open(bat_path, "w") as f:
         f.write(content)
@@ -70,10 +75,21 @@ def register_in_registry(manifest_path: str) -> None:
 
     import winreg  # noqa: PLC0415 -- only exists on Windows, imported lazily on purpose
 
-    key_path = rf"Software\Google\Chrome\NativeMessagingHosts\{HOST_NAME}"
-    with winreg.CreateKey(winreg.HKEY_CURRENT_USER, key_path) as key:
-        winreg.SetValueEx(key, "", 0, winreg.REG_SZ, manifest_path)
-    print(f"Registered {HOST_NAME} -> {manifest_path} under HKCU\\{key_path}")
+    # Register for all major Chromium-based browsers
+    browser_keys = [
+        rf"Software\Google\Chrome\NativeMessagingHosts\{HOST_NAME}",
+        rf"Software\BraveSoftware\Brave-Browser\NativeMessagingHosts\{HOST_NAME}",
+        rf"Software\Microsoft\Edge\NativeMessagingHosts\{HOST_NAME}",
+        rf"Software\Chromium\NativeMessagingHosts\{HOST_NAME}",
+    ]
+
+    for key_path in browser_keys:
+        try:
+            with winreg.CreateKey(winreg.HKEY_CURRENT_USER, key_path) as key:
+                winreg.SetValueEx(key, "", 0, winreg.REG_SZ, manifest_path)
+            print(f"Registered {HOST_NAME} -> {manifest_path} under HKCU\\{key_path}")
+        except OSError as e:
+            print(f"Warning: Could not register under HKCU\\{key_path}: {e}")
 
 
 def main() -> None:

@@ -1,1 +1,1 @@
-c:\Users\mitan\Downloads\download_manager_1\download_manager\start.bat
+c:\Users\mitan\Downloads\download_manager_1\download_manager\start_daemon.bat
