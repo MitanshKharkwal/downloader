@@ -3,7 +3,12 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "android_app"))
+sys.path.insert(
+    0,
+    os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "android_app"
+    ),
+)
 
 import intent_bridge
 
@@ -14,7 +19,6 @@ intent_bridge.get_startup_intent_uri = lambda: (
 )
 
 from kivy.clock import Clock
-
 from main import DownloadManagerApp
 
 app = DownloadManagerApp()
@@ -39,17 +43,30 @@ def check_and_screenshot(_dt):
     tasks = app.manager.list_tasks()
     print(f"\ntasks in manager: {len(tasks)}")
     for t in tasks:
-        print(f"  {t.id}  type={t.type.value}  status={t.status.value}  name={t.name!r}  source={t.source[:55]}")
+        print(
+            f"  {t.id}  type={t.type.value}  status={t.status.value}  name={t.name!r}  source={t.source[:55]}"
+        )
 
     sources = {t.source for t in tasks}
-    assert any("aaaaaaaa" in s for s in sources), "cold-start intent should have been captured"
-    assert any("bbbbbbbb" in s for s in sources), "live (already-running) intent should have been captured"
-    assert any(s.startswith("https://") for s in sources), "manual add-bar entry should have been captured"
+    assert any("aaaaaaaa" in s for s in sources), (
+        "cold-start intent should have been captured"
+    )
+    assert any("bbbbbbbb" in s for s in sources), (
+        "live (already-running) intent should have been captured"
+    )
+    assert any(s.startswith("https://") for s in sources), (
+        "manual add-bar entry should have been captured"
+    )
     assert len(app.rows) == len(tasks), "every task should have a UI row"
-    print("\nall three capture paths (cold-start intent, live intent, manual add) verified")
+    print(
+        "\nall three capture paths (cold-start intent, live intent, manual add) verified"
+    )
 
     from kivy.core.window import Window
-    shot_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "screenshot.png")
+
+    shot_path = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "screenshot.png"
+    )
     Window.screenshot(name=shot_path)
     print("screenshot saved to", shot_path)
 

@@ -16,8 +16,8 @@ process/webpage can't queue downloads into the app.
 
 from __future__ import annotations
 
-import json
 import hmac
+import json
 import os
 import secrets
 import threading
@@ -25,6 +25,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 
 # Ensure we can type hint DownloadManager without circular imports
 from typing import TYPE_CHECKING
+
 if TYPE_CHECKING:
     from core.manager import DownloadManager
 
@@ -44,7 +45,7 @@ def load_or_create_token(token_path: str) -> str:
     return token
 
 
-def _make_handler(manager: 'DownloadManager', token: str):
+def _make_handler(manager: DownloadManager, token: str):
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *args):
             pass  # keep the app's console quiet; the GUI shows status instead
@@ -82,12 +83,20 @@ def _make_handler(manager: 'DownloadManager', token: str):
             # Legacy support for browser extension
             if self.path == "/add":
                 if "source" not in body:
-                    self._send_json(400, {"ok": False, "error": "expected JSON body with a 'source' field"})
+                    self._send_json(
+                        400,
+                        {
+                            "ok": False,
+                            "error": "expected JSON body with a 'source' field",
+                        },
+                    )
                     return
                 try:
                     filename = body.get("filename")
                     headers = body.get("headers")
-                    result = manager.add(body["source"], filename=filename, headers=headers)
+                    result = manager.add(
+                        body["source"], filename=filename, headers=headers
+                    )
                     self._send_json(200, {"ok": True, **result.to_dict()})
                 except Exception as exc:
                     self._send_json(500, {"ok": False, "error": str(exc)})
@@ -97,22 +106,24 @@ def _make_handler(manager: 'DownloadManager', token: str):
             if self.path == "/rpc":
                 method = body.get("method")
                 args = body.get("args", {})
-                
+
                 try:
                     if method == "list_tasks":
                         tasks = []
                         for task in manager.list_tasks():
-                            tasks.append({
-                                "id": task.id,
-                                "source": task.source,
-                                "status": task.status.value,
-                                "priority": task.priority.value,
-                                "downloaded_bytes": task.downloaded_bytes or 0,
-                                "total_bytes": task.total_bytes or 0,
-                                "speed_bps": task.speed_bps or 0.0,
-                                "file_path": task.dest_path or "",
-                                "error": task.error_message or ""
-                            })
+                            tasks.append(
+                                {
+                                    "id": task.id,
+                                    "source": task.source,
+                                    "status": task.status.value,
+                                    "priority": task.priority.value,
+                                    "downloaded_bytes": task.downloaded_bytes or 0,
+                                    "total_bytes": task.total_bytes or 0,
+                                    "speed_bps": task.speed_bps or 0.0,
+                                    "file_path": task.dest_path or "",
+                                    "error": task.error_message or "",
+                                }
+                            )
                         self._send_json(200, {"ok": True, "tasks": tasks})
                     elif method == "add_video_task":
                         # source format: ytdlp||format_id||url
@@ -122,20 +133,25 @@ def _make_handler(manager: 'DownloadManager', token: str):
                         # Need to bypass manager.add since it assumes HTTP or Torrent based on regex/extension
                         # Let's just create a DownloadTask and insert it directly
                         from core.models import DownloadTask, DownloadType
+
                         name = args.get("filename", "video.mp4")
                         final_dest_dir = os.path.join(manager.download_dir, "Video")
                         os.makedirs(final_dest_dir, exist_ok=True)
                         base, ext = os.path.splitext(name)
                         target_path = os.path.join(final_dest_dir, name)
                         counter = 1
-                        while os.path.exists(target_path) or os.path.exists(target_path + ".dmpart"):
-                            target_path = os.path.join(final_dest_dir, f"{base} ({counter}){ext}")
+                        while os.path.exists(target_path) or os.path.exists(
+                            target_path + ".dmpart"
+                        ):
+                            target_path = os.path.join(
+                                final_dest_dir, f"{base} ({counter}){ext}"
+                            )
                             counter += 1
-                            
+
                         task = DownloadTask(
                             source=source,
                             dest_path=target_path,
-                            type=DownloadType.VIDEO
+                            type=DownloadType.VIDEO,
                         )
                         with manager._lock:
                             manager._tasks[task.id] = task
@@ -146,12 +162,16 @@ def _make_handler(manager: 'DownloadManager', token: str):
 
                     elif method == "fetch_video_info":
                         import yt_dlp
+
                         url = args.get("url")
-                        ydl_opts = {'quiet': True, 'no_warnings': True}
+                        ydl_opts = {"quiet": True, "no_warnings": True}
                         try:
                             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                                 info = ydl.extract_info(url, download=False)
-                                self._send_json(200, {"ok": True, "title": info.get("title", "Video")})
+                                self._send_json(
+                                    200,
+                                    {"ok": True, "title": info.get("title", "Video")},
+                                )
                         except Exception as e:
                             self._send_json(500, {"ok": False, "error": str(e)})
 
@@ -187,9 +207,12 @@ def _make_handler(manager: 'DownloadManager', token: str):
                         manager.shutdown()
                         self._send_json(200, {"ok": True})
                         import threading
-                        threading.Timer(0.5, lambda: __import__('os')._exit(0)).start()
+
+                        threading.Timer(0.5, lambda: __import__("os")._exit(0)).start()
                     elif method == "get_config":
-                        self._send_json(200, {"ok": True, "config": manager.get_config()})
+                        self._send_json(
+                            200, {"ok": True, "config": manager.get_config()}
+                        )
                     elif method == "set_config":
                         manager.set_config(args.get("config", {}))
                         self._send_json(200, {"ok": True})
@@ -207,7 +230,9 @@ def _make_handler(manager: 'DownloadManager', token: str):
 class IpcServer:
     """Runs on a background thread inside the desktop app process."""
 
-    def __init__(self, manager: 'DownloadManager', token: str, port: int = DEFAULT_PORT) -> None:
+    def __init__(
+        self, manager: DownloadManager, token: str, port: int = DEFAULT_PORT
+    ) -> None:
         self.port = port
         self._server = HTTPServer(("127.0.0.1", port), _make_handler(manager, token))
         self._thread: threading.Thread | None = None

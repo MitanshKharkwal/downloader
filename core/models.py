@@ -53,18 +53,22 @@ class DownloadTask:
     # HTTP-specific
     num_connections: int = 8
     supports_ranges: bool = False
+    mirrors: list[str] = field(default_factory=list)
 
     # Torrent-specific
     num_peers: int = 0
     num_seeds: int = 0
     name: str = ""
+    file_priorities: list[int] = field(default_factory=list)
     description: str = ""
     category: str = ""
+    filename_is_explicit: bool = False
 
     error_message: str = ""
     headers: dict[str, str] = field(default_factory=dict)
     created_at: float = field(default_factory=time.time)
     completed_at: float | None = None
+    was_paused_for_urgent: bool = False
 
     def progress(self) -> float:
         if self.total_bytes <= 0:
@@ -90,7 +94,7 @@ class DownloadTask:
         return d
 
     @classmethod
-    def from_dict(cls, d: dict) -> "DownloadTask":
+    def from_dict(cls, d: dict) -> DownloadTask:
         # progress/eta_seconds are computed display fields added by
         # to_dict(), not real constructor args -- drop them before
         # rebuilding, and convert the enum fields back from their

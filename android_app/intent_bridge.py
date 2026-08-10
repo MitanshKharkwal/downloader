@@ -17,7 +17,10 @@ from __future__ import annotations
 import os
 
 try:
-    from android import activity, mActivity  # noqa: F401 -- provided by python-for-android at runtime
+    from android import (
+        activity,
+        mActivity,
+    )
     from jnius import autoclass
 
     ON_ANDROID = True

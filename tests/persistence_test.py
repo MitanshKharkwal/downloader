@@ -1,25 +1,28 @@
 import os
 import sys
-import time
 import tempfile
-import sys
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from core.manager import DownloadManager
-from core.models import DownloadStatus
-from local_range_server import start_server
 import random
 
+from local_range_server import start_server
+
+from core.manager import DownloadManager
+from core.models import DownloadStatus
+
 random.seed(3)
-DATA = bytes(random.getrandbits(8) for _ in range(3 * 1024 * 1024))  # 3MB, big enough to catch mid-flight
+DATA = bytes(
+    random.getrandbits(8) for _ in range(3 * 1024 * 1024)
+)  # 3MB, big enough to catch mid-flight
 start_server(DATA, port=8988)
 time.sleep(0.2)
 URL = "http://127.0.0.1:8988/file.bin"
 
 import shutil
+
 test_dir = os.path.join(tempfile.gettempdir(), "persist_test")
 shutil.rmtree(test_dir, ignore_errors=True)
 os.makedirs(test_dir, exist_ok=True)
@@ -42,7 +45,9 @@ while m1.get(t1.id).downloaded_bytes == 0 and time.time() - start_wait < 5.0:
 time.sleep(0.2)
 
 
-print(f"\nbefore restart: t1={m1.get(t1.id).status.value}  t2={m1.get(t2.id).status.value}")
+print(
+    f"\nbefore restart: t1={m1.get(t1.id).status.value}  t2={m1.get(t2.id).status.value}"
+)
 assert m1.get(t1.id).status == DownloadStatus.DOWNLOADING
 assert m1.get(t2.id).status == DownloadStatus.QUEUED
 
@@ -55,7 +60,9 @@ print(f"tasks reloaded: {len(reloaded)}")
 assert len(reloaded) == 2
 
 r1, r2 = reloaded[t1.id], reloaded[t2.id]
-print(f"after restart: t1={r1.status.value} ({r1.downloaded_bytes} bytes)  t2={r2.status.value}")
+print(
+    f"after restart: t1={r1.status.value} ({r1.downloaded_bytes} bytes)  t2={r2.status.value}"
+)
 # t1 was DOWNLOADING when saved -- should come back PAUSED (safe default), not lost
 assert r1.status == DownloadStatus.PAUSED
 assert r1.downloaded_bytes > 0, "progress should have been preserved, not reset to 0"
@@ -65,8 +72,12 @@ assert r2.status == DownloadStatus.QUEUED
 m2.resume(t1.id)
 time.sleep(1.0)
 final = m2.get(t1.id)
-print(f"after resume: status={final.status.value}  {final.downloaded_bytes}/{final.total_bytes}")
-assert final.downloaded_bytes >= r1.downloaded_bytes, "resume should not lose already-downloaded bytes"
+print(
+    f"after resume: status={final.status.value}  {final.downloaded_bytes}/{final.total_bytes}"
+)
+assert final.downloaded_bytes >= r1.downloaded_bytes, (
+    "resume should not lose already-downloaded bytes"
+)
 
 m2.shutdown()
 
@@ -76,10 +87,14 @@ shutil.rmtree(cancel_dir, ignore_errors=True)
 os.makedirs(cancel_dir, exist_ok=True)
 m3 = DownloadManager(download_dir=cancel_dir, max_concurrent_downloads=1)
 t3 = m3.add(URL, filename="to_cancel.bin")
-print(f"\nt3 status right after add: {m3.get(t3.id).status.value}, error: {m3.get(t3.id).error_message!r}")
+print(
+    f"\nt3 status right after add: {m3.get(t3.id).status.value}, error: {m3.get(t3.id).error_message!r}"
+)
 time.sleep(0.3)
 t3_now = m3.get(t3.id)
-print(f"t3 status after 0.3s: {t3_now.status.value}, downloaded: {t3_now.downloaded_bytes}, error: {t3_now.error_message!r}")
+print(
+    f"t3 status after 0.3s: {t3_now.status.value}, downloaded: {t3_now.downloaded_bytes}, error: {t3_now.error_message!r}"
+)
 part_path = os.path.join(cancel_dir, "Other", "to_cancel.bin.part")
 print(f"dir contents: {os.listdir(cancel_dir)}")
 print(f"part file exists before cancel: {os.path.exists(part_path)}")
@@ -91,7 +106,7 @@ for _ in range(30):
     if not os.path.exists(part_path):
         break
     time.sleep(0.1)
-    
+
 print(f"part file exists after cancel: {os.path.exists(part_path)}")
 assert not os.path.exists(part_path), "canceling should clean up the partial file"
 

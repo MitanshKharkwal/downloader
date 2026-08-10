@@ -74,7 +74,7 @@ class TorrentSession:
         self._session = lt.session(settings)
 
     @property
-    def raw(self) -> "lt.session":
+    def raw(self) -> lt.session:
         return self._session
 
     def shutdown(self) -> None:
@@ -88,14 +88,17 @@ class TorrentSession:
 
 
 class TorrentDownload:
-    def __init__(self, task: DownloadTask, events: EventEmitter, torrent_session: TorrentSession) -> None:
+    def __init__(
+        self, task: DownloadTask, events: EventEmitter, torrent_session: TorrentSession
+    ) -> None:
         self.task = task
         self.events = events
         self._session = torrent_session.raw
-        self._handle: "lt.torrent_handle | None" = None
+        self._handle: lt.torrent_handle | None = None
         self._poll_thread: threading.Thread | None = None
         self._stop_event = threading.Event()
         self._completed_emitted = False
+        self._files_prioritized = False
 
     # -- public API ------------------------------------------------------
 
@@ -126,7 +129,11 @@ class TorrentDownload:
         self._poll_thread.start()
 
     def pause(self) -> None:
-        if self.task.status in (DownloadStatus.COMPLETED, DownloadStatus.ERROR, DownloadStatus.CANCELED):
+        if self.task.status in (
+            DownloadStatus.COMPLETED,
+            DownloadStatus.ERROR,
+            DownloadStatus.CANCELED,
+        ):
             return  # nothing to pause -- handle may already be removed from the session
         if self._handle and self._handle.is_valid():
             self._handle.pause()
@@ -151,6 +158,7 @@ class TorrentDownload:
                 if os.path.exists(self.task.dest_path):
                     if os.path.isdir(self.task.dest_path):
                         import shutil
+
                         shutil.rmtree(self.task.dest_path, ignore_errors=True)
                     else:
                         os.remove(self.task.dest_path)
@@ -161,7 +169,7 @@ class TorrentDownload:
 
     # -- internals ---------------------------------------------------------
 
-    def _build_add_params(self) -> "lt.add_torrent_params":
+    def _build_add_params(self) -> lt.add_torrent_params:
         source = self.task.source
         if source.startswith("magnet:"):
             params = lt.parse_magnet_uri(source)
@@ -190,6 +198,17 @@ class TorrentDownload:
             self.task.speed_bps = float(status.download_rate)
             self.task.num_peers = status.num_peers
             self.task.num_seeds = status.num_seeds
+
+            if (
+                not self._files_prioritized
+                and status.has_metadata
+                and getattr(self.task, "file_priorities", None)
+            ):
+                try:
+                    self._handle.prioritize_files(self.task.file_priorities)
+                except Exception:
+                    pass
+                self._files_prioritized = True
 
             mapped = _STATE_MAP.get(status.state, DownloadStatus.DOWNLOADING)
             if self.task.status != DownloadStatus.PAUSED:

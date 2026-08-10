@@ -27,7 +27,9 @@ import urllib.request
 APP_DATA_DIR = os.path.join(os.path.expanduser("~"), ".download_manager")
 TOKEN_PATH = os.path.join(APP_DATA_DIR, "ipc_token.txt")
 IPC_PORT = 47821  # must match core/ipc_server.py's DEFAULT_PORT
-LAUNCH_CMD_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "app_launch_command.txt")
+LAUNCH_CMD_FILE = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "app_launch_command.txt"
+)
 
 
 def read_message() -> dict:
@@ -64,17 +66,30 @@ def _try_launch_app() -> None:
         cmd = f.read().strip()
     if cmd:
         try:
-            subprocess.Popen(cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            subprocess.Popen(
+                cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+            )
         except OSError:
             pass
 
 
-def post_to_app(source: str, filename: str | None = None, headers: dict | None = None, retries: int = 5, delay: float = 0.6) -> dict:
+def post_to_app(
+    source: str,
+    filename: str | None = None,
+    headers: dict | None = None,
+    retries: int = 5,
+    delay: float = 0.6,
+) -> dict:
     token = _read_token()
     if token is None:
-        return {"ok": False, "error": "desktop app has never run -- no IPC token found yet"}
+        return {
+            "ok": False,
+            "error": "desktop app has never run -- no IPC token found yet",
+        }
 
-    payload = json.dumps({"source": source, "filename": filename, "headers": headers or {}}).encode()
+    payload = json.dumps(
+        {"source": source, "filename": filename, "headers": headers or {}}
+    ).encode()
     launched = False
 
     def _try_once() -> dict | None:
@@ -109,7 +124,10 @@ def post_to_app(source: str, filename: str | None = None, headers: dict | None =
         else:
             time.sleep(delay)
 
-    return {"ok": False, "error": "could not reach the desktop app after retries -- is it running?"}
+    return {
+        "ok": False,
+        "error": "could not reach the desktop app after retries -- is it running?",
+    }
 
 
 def handle(message: dict) -> dict:
@@ -122,7 +140,9 @@ def handle(message: dict) -> dict:
         source = message.get("source")
         if not source:
             return {"ok": False, "error": "missing 'source'"}
-        return post_to_app(source, filename=message.get("filename"), headers=message.get("headers"))
+        return post_to_app(
+            source, filename=message.get("filename"), headers=message.get("headers")
+        )
 
     return {"ok": False, "error": f"unknown action: {action!r}"}
 

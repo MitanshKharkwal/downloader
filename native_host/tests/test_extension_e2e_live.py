@@ -13,7 +13,7 @@ USER_DATA_DIR = "/tmp/pw-profile-live"
 os.makedirs(PAGE_DIR, exist_ok=True)
 with open(os.path.join(PAGE_DIR, "index.html"), "w") as f:
     f.write(
-        '<!DOCTYPE html><html><body><h1>Test page</h1>'
+        "<!DOCTYPE html><html><body><h1>Test page</h1>"
         '<a id="magnet-link" href="magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&dn=Test+File">'
         "Download via magnet</a></body></html>"
     )

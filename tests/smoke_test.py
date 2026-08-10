@@ -1,5 +1,6 @@
 import os
 import sys
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -20,7 +21,9 @@ dest = "smoke_out/pip.whl"
 if os.path.exists(dest):
     os.remove(dest)
 
-task = DownloadTask(source=URL, dest_path=dest, type=DownloadType.HTTP, num_connections=6)
+task = DownloadTask(
+    source=URL, dest_path=dest, type=DownloadType.HTTP, num_connections=6
+)
 events = EventEmitter()
 progress_ticks = []
 events.on("progress", lambda t: progress_ticks.append(t.downloaded_bytes))
@@ -35,7 +38,9 @@ while task.status not in (DownloadStatus.COMPLETED, DownloadStatus.ERROR):
         print("TIMEOUT")
         break
 
-assert task.status == DownloadStatus.COMPLETED, f"task failed with status {task.status}, error: {task.error_message}"
+assert task.status == DownloadStatus.COMPLETED, (
+    f"task failed with status {task.status}, error: {task.error_message}"
+)
 
 print("status:", task.status, "error:", task.error_message)
 print("downloaded_bytes:", task.downloaded_bytes, "total_bytes:", task.total_bytes)
@@ -58,7 +63,9 @@ if os.path.exists(dest2):
 if os.path.exists(dest2 + ".dmpart.json"):
     os.remove(dest2 + ".dmpart.json")
 
-task2 = DownloadTask(source=URL, dest_path=dest2, type=DownloadType.HTTP, num_connections=4)
+task2 = DownloadTask(
+    source=URL, dest_path=dest2, type=DownloadType.HTTP, num_connections=4
+)
 events2 = EventEmitter()
 dl2 = HttpDownload(task2, events2, num_connections=4)
 dl2.start()
@@ -66,7 +73,12 @@ time.sleep(0.4)
 dl2.pause()
 paused_bytes = task2.downloaded_bytes
 time.sleep(0.5)
-print("\npaused at:", paused_bytes, "bytes; state file exists:", os.path.exists(dest2 + ".dmpart.json"))
+print(
+    "\npaused at:",
+    paused_bytes,
+    "bytes; state file exists:",
+    os.path.exists(dest2 + ".dmpart.json"),
+)
 
 dl3 = HttpDownload(task2, events2, num_connections=4)
 dl3.start()

@@ -1,16 +1,18 @@
 import os
 import sys
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import random
+import shutil
 import time
+
+from local_range_server import start_server
 
 from core.manager import DownloadManager
 from core.models import DownloadStatus
-from local_range_server import start_server
 
-import shutil
 shutil.rmtree("queue_out", ignore_errors=True)
 
 random.seed(1)
@@ -27,8 +29,13 @@ time.sleep(0.3)
 print("right after adding both:")
 print(" t1:", manager.get(t1.id).status.value)
 print(" t2:", manager.get(t2.id).status.value)
-assert manager.get(t1.id).status in (DownloadStatus.DOWNLOADING, DownloadStatus.CONNECTING)
-assert manager.get(t2.id).status == DownloadStatus.QUEUED, "t2 should wait -- max_concurrent_downloads=1"
+assert manager.get(t1.id).status in (
+    DownloadStatus.DOWNLOADING,
+    DownloadStatus.CONNECTING,
+)
+assert manager.get(t2.id).status == DownloadStatus.QUEUED, (
+    "t2 should wait -- max_concurrent_downloads=1"
+)
 
 start = time.time()
 while manager.get(t1.id).status != DownloadStatus.COMPLETED:
@@ -41,7 +48,10 @@ time.sleep(0.3)
 print("\nafter t1 completes:")
 print(" t1:", manager.get(t1.id).status.value)
 print(" t2:", manager.get(t2.id).status.value)
-assert manager.get(t2.id).status in (DownloadStatus.DOWNLOADING, DownloadStatus.CONNECTING), "t2 should auto-start"
+assert manager.get(t2.id).status in (
+    DownloadStatus.DOWNLOADING,
+    DownloadStatus.CONNECTING,
+), "t2 should auto-start"
 
 manager.shutdown()
 print("\nqueueing behavior correct")

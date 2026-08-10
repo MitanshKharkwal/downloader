@@ -37,11 +37,11 @@ def write_wrapper_bat() -> str:
     # venv python is preferred, falls back to system python
     content = (
         "@echo off\r\n"
-        f"cd /d \"{THIS_DIR}\\..\"\r\n"
-        f"if exist \"venv\\Scripts\\python.exe\" (\r\n"
-        f"    \"venv\\Scripts\\python.exe\" -u \"{host_py}\"\r\n"
+        f'cd /d "{THIS_DIR}\\.."\r\n'
+        f'if exist "venv\\Scripts\\python.exe" (\r\n'
+        f'    "venv\\Scripts\\python.exe" -u "{host_py}"\r\n'
         f") else (\r\n"
-        f"    python -u \"{host_py}\"\r\n"
+        f'    python -u "{host_py}"\r\n'
         f")\r\n"
     )
     with open(bat_path, "w") as f:
@@ -73,7 +73,7 @@ def register_in_registry(manifest_path: str) -> None:
         )
         return
 
-    import winreg  # noqa: PLC0415 -- only exists on Windows, imported lazily on purpose
+    import winreg
 
     # Register for all major Chromium-based browsers
     browser_keys = [

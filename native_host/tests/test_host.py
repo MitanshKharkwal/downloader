@@ -6,11 +6,11 @@ import time
 
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))  # native_host/tests
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(_THIS_DIR))  # download_manager/
-sys.path.insert(0, os.path.join(_PROJECT_ROOT, "core"))
+sys.path.insert(0, _PROJECT_ROOT)
 
 import json
 
-from ipc_server import IpcServer, load_or_create_token
+from core.ipc_server import IpcServer, load_or_create_token
 
 HOST_SCRIPT = os.path.join(_PROJECT_ROOT, "native_host", "host.py")
 APP_DATA_DIR = os.path.join(os.path.expanduser("~"), ".download_manager")
@@ -73,7 +73,9 @@ result = run_host_once({"action": "ping"})
 print("\nping with app running:", result)
 assert result == {"ok": True, "pong": True, "app_token_found": True}
 
-result = run_host_once({"action": "add", "source": "magnet:?xt=urn:btih:cafebabe", "filename": None})
+result = run_host_once(
+    {"action": "add", "source": "magnet:?xt=urn:btih:cafebabe", "filename": None}
+)
 print("add (magnet) with app running:", result)
 assert result["ok"] is True and result["id"] == "abc123"
 assert received == ["magnet:?xt=urn:btih:cafebabe"]
