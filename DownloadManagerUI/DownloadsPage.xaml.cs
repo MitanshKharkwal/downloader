@@ -1,6 +1,7 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Navigation;
 using System;
 using System.Collections.ObjectModel;
 using System.Linq;
@@ -18,8 +19,11 @@ namespace DownloadManagerUI;
 public sealed partial class DownloadsPage : Page
 {
     public ObservableCollection<DownloadTask> Tasks { get; } = new();
+    public ObservableCollection<DownloadTask> FilteredTasks { get; } = new();
+    private string _currentCategoryFilter = "All";
     private readonly IpcClient _ipc = new();
     private DispatcherTimer _timer;
+    private DispatcherTimer _clipTimer;
 
     public DownloadsPage()
     {
@@ -29,12 +33,90 @@ public sealed partial class DownloadsPage : Page
         _timer.Tick += Timer_Tick;
         _timer.Start();
 
-        var clipTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
-        clipTimer.Tick += ClipTimer_Tick;
-        clipTimer.Start();
+        _clipTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+        _clipTimer.Tick += ClipTimer_Tick;
+        _clipTimer.Start();
+
+        this.Loaded += (s, e) => SetupDataGridColumns();
+    }
+
+    private void SetupDataGridColumns()
+    {
+        UpdateDataGridColumns();
+        TasksList.ColumnReordered += (s, e) => SaveColumnState();
+        TasksList.LayoutUpdated += (s, e) => SaveColumnState();
+    }
+
+    private void UpdateDataGridColumns()
+    {
+        var configs = SettingsManager.GetColumnConfigs();
+        foreach (var col in TasksList.Columns)
+        {
+            var config = configs.FirstOrDefault(c => c.Header?.ToString() == col.Header?.ToString());
+            if (config != null)
+            {
+                col.Visibility = config.IsVisible ? Visibility.Visible : Visibility.Collapsed;
+                if (col.DisplayIndex != config.DisplayIndex)
+                {
+                    try { col.DisplayIndex = config.DisplayIndex; } catch { }
+                }
+                col.Width = new CommunityToolkit.WinUI.UI.Controls.DataGridLength(config.Width, CommunityToolkit.WinUI.UI.Controls.DataGridLengthUnitType.Pixel);
+            }
+        }
+    }
+
+    private void SaveColumnState()
+    {
+        if (!_timer.IsEnabled || TasksList.Columns.Count == 0) return;
+        var configs = SettingsManager.GetColumnConfigs();
+        bool changed = false;
+        foreach (var col in TasksList.Columns)
+        {
+            var config = configs.FirstOrDefault(c => c.Header?.ToString() == col.Header?.ToString());
+            if (config != null)
+            {
+                if (config.DisplayIndex != col.DisplayIndex || Math.Abs(config.Width - col.ActualWidth) > 1 || config.IsVisible != (col.Visibility == Visibility.Visible))
+                {
+                    config.DisplayIndex = col.DisplayIndex;
+                    config.Width = col.ActualWidth > 0 ? col.ActualWidth : config.Width;
+                    config.IsVisible = col.Visibility == Visibility.Visible;
+                    changed = true;
+                }
+            }
+        }
+        if (changed)
+        {
+            SettingsManager.SaveColumnConfigs(configs);
+        }
+    }
+
+    protected override void OnNavigatedFrom(NavigationEventArgs e)
+    {
+        base.OnNavigatedFrom(e);
+        _timer.Stop();
+        _clipTimer.Stop();
     }
 
     private string _lastClipboardText = "";
+
+    protected override void OnNavigatedTo(NavigationEventArgs e)
+    {
+        base.OnNavigatedTo(e);
+        if (e.Parameter is string category && !string.IsNullOrEmpty(category))
+        {
+            _currentCategoryFilter = category;
+        }
+        else
+        {
+            _currentCategoryFilter = "All";
+        }
+        ApplyFilter();
+        
+        UpdateDataGridColumns();
+
+        if (!_timer.IsEnabled) _timer.Start();
+        if (!_clipTimer.IsEnabled) _clipTimer.Start();
+    }
 
     private async void ClipTimer_Tick(object? sender, object e)
     {
@@ -97,11 +179,14 @@ public sealed partial class DownloadsPage : Page
                     existing.DownloadedBytes = ut.DownloadedBytes;
                     existing.TotalBytes = ut.TotalBytes;
                     existing.SpeedBps = ut.SpeedBps;
+                    existing.Description = ut.Description;
                     existing.Error = ut.Error;
                     existing.FilePath = ut.FilePath;
                     existing.Priority = ut.Priority;
                 }
             }
+
+            ApplyFilter();
         }
         catch
         {
@@ -124,6 +209,25 @@ public sealed partial class DownloadsPage : Page
             Microsoft.Windows.AppNotifications.AppNotificationManager.Default.Show(notification);
         }
         catch { }
+    }
+
+    private void TasksList_DoubleTapped(object sender, Microsoft.UI.Xaml.Input.DoubleTappedRoutedEventArgs e)
+    {
+        if (TasksList.SelectedItem is DownloadTask task && !string.IsNullOrEmpty(task.FilePath))
+        {
+            try
+            {
+                if (System.IO.File.Exists(task.FilePath))
+                {
+                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                    {
+                        FileName = task.FilePath,
+                        UseShellExecute = true
+                    });
+                }
+            }
+            catch { }
+        }
     }
 
     private async void AddDownload_Click(object sender, RoutedEventArgs e)
@@ -271,6 +375,26 @@ public sealed partial class DownloadsPage : Page
             var dataPackage = new Windows.ApplicationModel.DataTransfer.DataPackage();
             dataPackage.SetText(url);
             Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(dataPackage);
+        }
+    }
+
+    private void ApplyFilter()
+    {
+        var targetTasks = Tasks.Where(t =>
+        {
+            if (_currentCategoryFilter == "All") return true;
+            if (_currentCategoryFilter == "Finished") return t.Status == "COMPLETED";
+            if (_currentCategoryFilter == "Unfinished") return t.Status != "COMPLETED";
+            return t.Category == _currentCategoryFilter;
+        }).ToList();
+
+        var toRemove = FilteredTasks.Where(t => !targetTasks.Contains(t)).ToList();
+        foreach (var t in toRemove) FilteredTasks.Remove(t);
+        
+        foreach (var t in targetTasks)
+        {
+            if (!FilteredTasks.Contains(t))
+                FilteredTasks.Add(t);
         }
     }
 }

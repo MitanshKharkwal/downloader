@@ -7,8 +7,10 @@
     xmlns:local="using:DownloadManagerUI"
     xmlns:models="using:DownloadManagerUI.Models"
     xmlns:controls="using:CommunityToolkit.WinUI.Controls"
+    xmlns:dg="using:CommunityToolkit.WinUI.UI.Controls"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-    mc:Ignorable="d">
+    mc:Ignorable="d"
+    NavigationCacheMode="Required">
 
     <Grid Padding="24">
         <Grid.RowDefinitions>
@@ -52,46 +54,58 @@
             <Button Grid.Column="4" Content="Clear Finished" Click="ClearFinished_Click" Margin="4,0,0,0" />
         </Grid>
 
-        <ListView x:Name="TasksList" Grid.Row="2" ItemsSource="{x:Bind Tasks}" SelectionMode="None">
-            <ListView.ItemTemplate>
-                <DataTemplate x:DataType="models:DownloadTask">
-                    <controls:SettingsExpander Header="{x:Bind Filename, Mode=OneWay}" Description="{x:Bind Status, Mode=OneWay}" Margin="0,0,0,8">
-                        <controls:SettingsExpander.HeaderIcon>
-                            <FontIcon Glyph="&#xE896;" />
-                        </controls:SettingsExpander.HeaderIcon>
-                        <controls:SettingsExpander.Content>
-                            <StackPanel Orientation="Vertical" Spacing="8" VerticalAlignment="Center">
-                                <StackPanel Orientation="Horizontal" Spacing="12">
-                                    <ProgressBar Value="{x:Bind Progress, Mode=OneWay}" Width="150" VerticalAlignment="Center" />
-                                    <TextBlock Text="{x:Bind ProgressText, Mode=OneWay}" VerticalAlignment="Center" Width="45"/>
-                                    <TextBlock Text="{x:Bind SizeText, Mode=OneWay}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" />
-                                    <TextBlock Text="{x:Bind SpeedText, Mode=OneWay}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" />
-                                    <TextBlock Text="{x:Bind ETAText, Mode=OneWay}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" Margin="12,0,0,0"/>
+        <dg:DataGrid x:Name="TasksList" 
+                         Grid.Row="2"
+                         ItemsSource="{x:Bind FilteredTasks}" 
+                         AutoGenerateColumns="False" 
+                         CanUserSortColumns="True" 
+                         CanUserResizeColumns="True" 
+                         IsReadOnly="True" 
+                         GridLinesVisibility="Horizontal" 
+                         HeadersVisibility="Column" 
+                         SelectionMode="Single"
+                         DoubleTapped="TasksList_DoubleTapped">
+                <dg:DataGrid.Columns>
+                    <dg:DataGridTextColumn Header="File Name" Binding="{Binding Filename}" Width="250" />
+                    <dg:DataGridTextColumn Header="Q" Binding="{Binding Q}" Width="50" />
+                    <dg:DataGridTextColumn Header="Size" Binding="{Binding SizeText}" Width="120" />
+                    <dg:DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="100" />
+                    <dg:DataGridTemplateColumn Header="Progress" Width="150">
+                        <dg:DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <Grid Padding="8,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <ProgressBar Value="{Binding Progress}" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                    <TextBlock Grid.Column="1" Text="{Binding ProgressText}" VerticalAlignment="Center" FontSize="12" MinWidth="45" TextAlignment="Right" />
+                                </Grid>
+                            </DataTemplate>
+                        </dg:DataGridTemplateColumn.CellTemplate>
+                    </dg:DataGridTemplateColumn>
+                    <dg:DataGridTextColumn Header="Time left" Binding="{Binding ETAText}" Width="120" />
+                    <dg:DataGridTextColumn Header="Transfer rate" Binding="{Binding SpeedText}" Width="100" />
+                    <dg:DataGridTextColumn Header="Last Try Date" Binding="{Binding LastTryDate}" Width="120" />
+                    <dg:DataGridTextColumn Header="Description" Binding="{Binding Description}" Width="150" />
+                    <dg:DataGridTextColumn Header="Date Added" Binding="{Binding DateAdded}" Width="120" />
+
+                    <dg:DataGridTemplateColumn Header="Actions" Width="*">
+                        <dg:DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center" Padding="4">
+                                    <Button Content="&#xE769;" FontFamily="Segoe MDL2 Assets" ToolTipService.ToolTip="Pause" Tag="{Binding Id}" Click="Pause_Click" Background="Transparent" BorderThickness="0" Padding="4" />
+                                    <Button Content="&#xE768;" FontFamily="Segoe MDL2 Assets" ToolTipService.ToolTip="Resume" Tag="{Binding Id}" Click="Resume_Click" Background="Transparent" BorderThickness="0" Padding="4" />
+                                    <Button Content="&#xE149;" FontFamily="Segoe MDL2 Assets" ToolTipService.ToolTip="Retry" Tag="{Binding Id}" Click="Retry_Click" Background="Transparent" BorderThickness="0" Padding="4" />
+                                    <Button Content="&#xE711;" FontFamily="Segoe MDL2 Assets" ToolTipService.ToolTip="Cancel" Tag="{Binding Id}" Click="Cancel_Click" Background="Transparent" BorderThickness="0" Padding="4" />
+                                    <Button Content="&#xE8B7;" FontFamily="Segoe MDL2 Assets" ToolTipService.ToolTip="Open Folder" Tag="{Binding FilePath}" Click="OpenFolder_Click" Background="Transparent" BorderThickness="0" Padding="4" />
+                                    <Button Content="&#xE8C8;" FontFamily="Segoe MDL2 Assets" ToolTipService.ToolTip="Copy URL" Tag="{Binding Source}" Click="CopyUrl_Click" Background="Transparent" BorderThickness="0" Padding="4" />
                                 </StackPanel>
-                                <TextBlock Text="{x:Bind Error, Mode=OneWay}" Foreground="Red" TextWrapping="Wrap" Visibility="{x:Bind ErrorVisibility, Mode=OneWay}" />
-                            </StackPanel>
-                        </controls:SettingsExpander.Content>
-                        
-                        <controls:SettingsExpander.Items>
-                            <controls:SettingsCard Header="Actions">
-                                <StackPanel Orientation="Horizontal" Spacing="8">
-                                    <Button Content="Pause" Tag="{x:Bind Id}" Click="Pause_Click" />
-                                    <Button Content="Resume" Tag="{x:Bind Id}" Click="Resume_Click" />
-                                    <Button Content="Retry" Tag="{x:Bind Id}" Click="Retry_Click" />
-                                    <Button Content="Cancel" Tag="{x:Bind Id}" Click="Cancel_Click" />
-                                </StackPanel>
-                            </controls:SettingsCard>
-                            <controls:SettingsCard Header="Tools">
-                                <StackPanel Orientation="Horizontal" Spacing="8">
-                                    <Button Content="Open Folder" Tag="{x:Bind FilePath}" Click="OpenFolder_Click" />
-                                    <Button Content="Copy URL" Tag="{x:Bind Source}" Click="CopyUrl_Click" />
-                                </StackPanel>
-                            </controls:SettingsCard>
-                        </controls:SettingsExpander.Items>
-                    </controls:SettingsExpander>
-                </DataTemplate>
-            </ListView.ItemTemplate>
-        </ListView>
+                            </DataTemplate>
+                        </dg:DataGridTemplateColumn.CellTemplate>
+                    </dg:DataGridTemplateColumn>
+                </dg:DataGrid.Columns>
+            </dg:DataGrid>
         
         <ContentDialog x:Name="VideoFormatDialog"
                        Title="Select Video Quality"

@@ -58,6 +58,8 @@ class DownloadTask:
     num_peers: int = 0
     num_seeds: int = 0
     name: str = ""
+    description: str = ""
+    category: str = ""
 
     error_message: str = ""
     headers: dict[str, str] = field(default_factory=dict)
@@ -82,6 +84,7 @@ class DownloadTask:
         d["type"] = self.type.value
         d["status"] = self.status.value
         d["priority"] = self.priority.value
+        d["description"] = self.description
         d["progress"] = round(self.progress(), 4)
         d["eta_seconds"] = self.eta_seconds()
         return d

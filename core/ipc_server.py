@@ -105,8 +105,8 @@ def _make_handler(manager: 'DownloadManager', token: str):
                             tasks.append({
                                 "id": task.id,
                                 "source": task.source,
-                                "status": task.status.name,
-                                "priority": task.priority.name,
+                                "status": task.status.value,
+                                "priority": task.priority.value,
                                 "downloaded_bytes": task.downloaded_bytes or 0,
                                 "total_bytes": task.total_bytes or 0,
                                 "speed_bps": task.speed_bps or 0.0,
@@ -162,6 +162,11 @@ def _make_handler(manager: 'DownloadManager', token: str):
                         task_id = args.get("task_id")
                         if task_id:
                             manager.resume(task_id)
+                        self._send_json(200, {"ok": True})
+                    elif method == "retry":
+                        task_id = args.get("task_id")
+                        if task_id:
+                            manager.retry(task_id)
                         self._send_json(200, {"ok": True})
                     elif method == "pause_all":
                         manager.pause_all()

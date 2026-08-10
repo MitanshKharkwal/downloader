@@ -54,7 +54,8 @@ public class IpcClient
         }
         catch (Exception ex)
         {
-            System.IO.File.AppendAllText("c:\\Users\\mitan\\Downloads\\download_manager_1\\download_manager\\ui_errors.log", $"SendRpc parse failed for {method}. Resp: {respString}. Ex: {ex}\n");
+            var logPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".download_manager", "ui_errors.log");
+            System.IO.File.AppendAllText(logPath, $"SendRpc parse failed for {method}. Resp: {respString}. Ex: {ex}\n");
             throw;
         }
     }
@@ -76,7 +77,8 @@ public class IpcClient
         }
         catch (Exception ex)
         {
-            System.IO.File.AppendAllText("c:\\Users\\mitan\\Downloads\\download_manager_1\\download_manager\\ui_errors.log", $"ListTasksAsync failed: {ex}\n");
+            var logPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".download_manager", "ui_errors.log");
+            System.IO.File.AppendAllText(logPath, $"ListTasksAsync failed: {ex}\n");
             System.Diagnostics.Debug.WriteLine($"ListTasksAsync failed: {ex.Message}");
         }
         return new List<DownloadTask>();

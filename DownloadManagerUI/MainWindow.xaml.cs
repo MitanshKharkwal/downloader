@@ -42,10 +42,15 @@ public sealed partial class MainWindow : Window
         }
         else if (args.SelectedItemContainer != null)
         {
-            var navItemTag = args.SelectedItemContainer.Tag.ToString();
-            if (navItemTag == "Downloads")
+            var navItemTag = args.SelectedItemContainer.Tag?.ToString() ?? "";
+            if (navItemTag.StartsWith("Category_"))
             {
-                RootFrame.Navigate(typeof(DownloadsPage));
+                var category = navItemTag.Substring("Category_".Length);
+                RootFrame.Navigate(typeof(DownloadsPage), category);
+            }
+            else if (navItemTag == "Downloads")
+            {
+                RootFrame.Navigate(typeof(DownloadsPage), "All");
             }
         }
     }
@@ -84,3 +89,4 @@ public class RelayCommand : System.Windows.Input.ICommand
     public bool CanExecute(object? parameter) => true;
     public void Execute(object? parameter) => _execute();
 }
+

@@ -142,27 +142,20 @@ class DownloadManager:
                 digest = hashlib.sha1(source.encode("utf-8")).hexdigest()[:10]
                 normalized_source = os.path.join(tempfile.gettempdir(), f"download_{digest}.torrent")
 
-        with self._lock:
-            for task in self._tasks.values():
-                if task.status in (DownloadStatus.QUEUED, DownloadStatus.CONNECTING, DownloadStatus.DOWNLOADING, DownloadStatus.PAUSED):
-                    if task.source == source or task.source == normalized_source:
-                        return task
-
-        if _MAGNET_RE.match(source):
-            task = DownloadTask(source=source, dest_path=dest_dir, type=DownloadType.TORRENT)
-        elif source.lower().endswith(".torrent"):
-            local_path = self._materialize_torrent_file(source)
-            task = DownloadTask(source=local_path, dest_path=dest_dir, type=DownloadType.TORRENT)
-        else:
+        is_torrent = bool(_MAGNET_RE.match(source)) or source.lower().endswith(".torrent")
+        intended_dir = dest_dir
+        intended_base = ""
+        intended_ext = ""
+        category = "Other"
+        
+        if not is_torrent:
             name = filename or self._filename_from_url(source)
-            
             name = re.sub(r'[<>:"/\\|?*]', '_', name)
             if len(name) > 150:
                 base, ext = os.path.splitext(name)
                 if len(ext) > 20: ext = ""
                 name = base[:150 - len(ext)] + ext
-            
-            # Categorize by extension
+                
             category = ""
             ext = os.path.splitext(name)[1].lower()
             if ext in ('.exe', '.msi', '.bat', '.sh', '.apk'): category = "Programs"
@@ -170,9 +163,34 @@ class DownloadManager:
             elif ext in ('.mp3', '.wav', '.flac', '.m4a', '.aac'): category = "Music"
             elif ext in ('.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.txt'): category = "Documents"
             elif ext in ('.zip', '.rar', '.7z', '.tar', '.gz', '.bz2', '.iso'): category = "Compressed"
+            elif ext in ('.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.tif', '.tiff'): category = "Photos"
             else: category = "Other"
             
-            final_dest_dir = os.path.join(dest_dir, category)
+            intended_dir = os.path.join(dest_dir, category)
+            intended_base, intended_ext = os.path.splitext(name)
+
+        with self._lock:
+            for task in self._tasks.values():
+                if task.status in (DownloadStatus.QUEUED, DownloadStatus.CONNECTING, DownloadStatus.DOWNLOADING, DownloadStatus.PAUSED):
+                    if task.source == source or task.source == normalized_source:
+                        if task.type == DownloadType.TORRENT:
+                            if os.path.abspath(task.dest_path) == os.path.abspath(dest_dir):
+                                return task
+                        else:
+                            if os.path.dirname(os.path.abspath(task.dest_path)) == os.path.abspath(intended_dir):
+                                task_base, task_ext = os.path.splitext(os.path.basename(task.dest_path))
+                                if task_ext == intended_ext and task_base.startswith(intended_base):
+                                    return task
+
+        if _MAGNET_RE.match(source):
+            task = DownloadTask(source=source, dest_path=dest_dir, type=DownloadType.TORRENT, category="Other")
+        elif source.lower().endswith(".torrent"):
+            local_path = self._materialize_torrent_file(source)
+            task = DownloadTask(source=local_path, dest_path=dest_dir, type=DownloadType.TORRENT, category="Other")
+        else:
+            final_dest_dir = intended_dir
+            name = intended_base + intended_ext
+            
             os.makedirs(final_dest_dir, exist_ok=True)
             
             base, ext = os.path.splitext(name)
@@ -188,6 +206,7 @@ class DownloadManager:
                 type=DownloadType.HTTP,
                 num_connections=self.max_connections_per_download,
                 headers=headers or {},
+                category=category
             )
 
         with self._lock:
@@ -209,6 +228,15 @@ class DownloadManager:
         else:
             # Was queued (never started) or app restarted -- just (re)start it.
             self._start_task(self._tasks[task_id])
+
+    def retry(self, task_id: str) -> None:
+        task = self._tasks.get(task_id)
+        if task and task.status in (DownloadStatus.FAILED, DownloadStatus.COMPLETED):
+            task.status = DownloadStatus.QUEUED
+            task.error_message = None
+            self._save_state()
+            self.events.emit("status", task)
+            self._maybe_start_next()
 
     def pause_all(self) -> None:
         with self._lock:

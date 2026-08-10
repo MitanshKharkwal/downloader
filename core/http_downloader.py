@@ -71,7 +71,7 @@ class HttpDownload:
         self.events = events
         self.num_connections = max(1, num_connections)
         self.chunk_size = chunk_size
-        self.extra_headers = {"User-Agent": DEFAULT_USER_AGENT, **(headers or {})}
+        self.extra_headers = {"User-Agent": DEFAULT_USER_AGENT, "Accept-Encoding": "identity", **(headers or {})}
         self.rate_limiter = rate_limiter
 
         self._segments: list[_Segment] = []
@@ -84,6 +84,7 @@ class HttpDownload:
         self._speed_samples: deque[tuple[float, int]] = deque()
         self._etag: str | None = None
         self._last_modified: str | None = None
+        self._unknown_size: bool = False
 
     # -- public API ----------------------------------------------------
 
@@ -281,6 +282,8 @@ class HttpDownload:
                 self.events.emit("status", self.task)
 
         if total <= 0 or not accepts_ranges:
+            if total <= 0:
+                self._unknown_size = True
             # Server can't or won't do ranged requests -- single stream, no
             # parallelism, but still resumable-ish for progress reporting.
             self.task.supports_ranges = False
@@ -362,7 +365,7 @@ class HttpDownload:
                             consecutive_failures = 0  # this segment is making real progress again
                             with self._lock:
                                 self.task.downloaded_bytes += n
-                                if self.task.total_bytes <= 0:
+                                if self.task.total_bytes <= 0 or self._unknown_size:
                                     # Server never gave us a Content-Length (e.g.
                                     # chunked transfer encoding) -- there's no way
                                     # to know the real total in advance, so mirror

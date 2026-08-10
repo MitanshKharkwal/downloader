@@ -4,8 +4,8 @@ import time
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 
-from download_manager.core.manager import DownloadManager
-from download_manager.core.models import DownloadStatus
+from core.manager import DownloadManager
+from core.models import DownloadStatus
 from download_manager.tests.local_range_server import start_server
 
 def test_retry():

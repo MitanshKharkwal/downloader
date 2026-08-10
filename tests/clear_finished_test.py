@@ -3,8 +3,8 @@ import sys
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 
-from download_manager.core.manager import DownloadManager
-from download_manager.core.models import DownloadStatus
+from core.manager import DownloadManager
+from core.models import DownloadStatus
 
 def test_clear_finished():
     dm = DownloadManager("test_clear_dir")

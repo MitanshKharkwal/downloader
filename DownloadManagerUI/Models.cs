@@ -16,8 +16,19 @@ public class DownloadTask : INotifyPropertyChanged
 
     [JsonPropertyName("id")]
     public string Id { get; set; } = "";
+    private string _source = "";
     [JsonPropertyName("source")]
-    public string Source { get; set; } = "";
+    public string Source
+    {
+        get => _source;
+        set
+        {
+            if (SetProperty(ref _source, value))
+            {
+                OnPropertyChanged(nameof(Filename));
+            }
+        }
+    }
     [JsonPropertyName("priority")]
     public string Priority { get; set; } = "NORMAL";
     private string _filePath = "";
@@ -77,6 +88,43 @@ public class DownloadTask : INotifyPropertyChanged
     {
         get => _error;
         set { if (SetProperty(ref _error, value)) OnPropertyChanged(nameof(ErrorVisibility)); }
+    }
+
+    private string _description = "";
+    [JsonPropertyName("description")]
+    public string Description
+    {
+        get => _description;
+        set => SetProperty(ref _description, value);
+    }
+
+    public string Q => "";
+    public string LastTryDate => "";
+
+    private double _createdAt;
+    [JsonPropertyName("created_at")]
+    public double CreatedAt
+    {
+        get => _createdAt;
+        set { if (SetProperty(ref _createdAt, value)) OnPropertyChanged(nameof(DateAdded)); }
+    }
+
+    public string DateAdded
+    {
+        get
+        {
+            if (_createdAt <= 0) return "";
+            var dateTime = DateTimeOffset.FromUnixTimeSeconds((long)_createdAt).ToLocalTime();
+            return dateTime.ToString("yyyy-MM-dd HH:mm");
+        }
+    }
+
+    private string _category = "Other";
+    [JsonPropertyName("category")]
+    public string Category
+    {
+        get => _category;
+        set => SetProperty(ref _category, value);
     }
 
     public Microsoft.UI.Xaml.Visibility ErrorVisibility => string.IsNullOrEmpty(Error) ? Microsoft.UI.Xaml.Visibility.Collapsed : Microsoft.UI.Xaml.Visibility.Visible;
@@ -190,5 +238,68 @@ public class VideoFormat
 
             return $"{Resolution} - {Ext} {codecInfo} - {FormatNote}{size}";
         }
+    }
+}
+
+public class ColumnConfig
+{
+    public string Header { get; set; } = "";
+    public bool IsVisible { get; set; } = true;
+    public int DisplayIndex { get; set; }
+    public double Width { get; set; }
+}
+
+public static class SettingsManager
+{
+    private static string GetConfigPath()
+    {
+        var dir = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".download_manager");
+        System.IO.Directory.CreateDirectory(dir);
+        return System.IO.Path.Combine(dir, "columns.json");
+    }
+
+    public static List<ColumnConfig> GetColumnConfigs()
+    {
+        try
+        {
+            var path = GetConfigPath();
+            if (System.IO.File.Exists(path))
+            {
+                var jsonStr = System.IO.File.ReadAllText(path);
+                var options = new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true, TypeInfoResolver = new System.Text.Json.Serialization.Metadata.DefaultJsonTypeInfoResolver() };
+                return System.Text.Json.JsonSerializer.Deserialize<List<ColumnConfig>>(jsonStr, options) ?? GetDefaultColumnConfigs();
+            }
+        }
+        catch { }
+        return GetDefaultColumnConfigs();
+    }
+
+    public static void SaveColumnConfigs(List<ColumnConfig> configs)
+    {
+        try
+        {
+            var options = new System.Text.Json.JsonSerializerOptions { TypeInfoResolver = new System.Text.Json.Serialization.Metadata.DefaultJsonTypeInfoResolver() };
+            var json = System.Text.Json.JsonSerializer.Serialize(configs, options);
+            System.IO.File.WriteAllText(GetConfigPath(), json);
+        }
+        catch { }
+    }
+
+    private static List<ColumnConfig> GetDefaultColumnConfigs()
+    {
+        return new List<ColumnConfig>
+        {
+            new ColumnConfig { Header = "File Name", IsVisible = true, DisplayIndex = 0, Width = 250 },
+            new ColumnConfig { Header = "Q", IsVisible = true, DisplayIndex = 1, Width = 50 },
+            new ColumnConfig { Header = "Size", IsVisible = true, DisplayIndex = 2, Width = 120 },
+            new ColumnConfig { Header = "Status", IsVisible = true, DisplayIndex = 3, Width = 100 },
+            new ColumnConfig { Header = "Progress", IsVisible = true, DisplayIndex = 4, Width = 150 },
+            new ColumnConfig { Header = "Time left", IsVisible = true, DisplayIndex = 5, Width = 120 },
+            new ColumnConfig { Header = "Transfer rate", IsVisible = true, DisplayIndex = 6, Width = 100 },
+            new ColumnConfig { Header = "Last Try Date", IsVisible = true, DisplayIndex = 7, Width = 120 },
+            new ColumnConfig { Header = "Description", IsVisible = true, DisplayIndex = 8, Width = 150 },
+            new ColumnConfig { Header = "Date Added", IsVisible = true, DisplayIndex = 9, Width = 120 },
+            new ColumnConfig { Header = "Actions", IsVisible = true, DisplayIndex = 10, Width = 200 }
+        };
     }
 }

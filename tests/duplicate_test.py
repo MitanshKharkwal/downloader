@@ -4,7 +4,7 @@ import sys
 # Ensure the package root (download_manager_1) is importable
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 
-from download_manager.core.manager import DownloadManager
+from core.manager import DownloadManager
 
 def test_duplicate_detection():
     dm = DownloadManager("test_duplicates_dir")

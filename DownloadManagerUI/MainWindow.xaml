@@ -47,7 +47,18 @@
                         Loaded="NavView_Loaded">
             
             <NavigationView.MenuItems>
-                <NavigationViewItem Tag="Downloads" Content="Downloads" Icon="Download" />
+                <NavigationViewItem Tag="Downloads" Content="All Downloads" Icon="Download">
+                    <NavigationViewItem.MenuItems>
+                        <NavigationViewItem Tag="Category_Compressed" Content="Compressed" />
+                        <NavigationViewItem Tag="Category_Documents" Content="Documents" />
+                        <NavigationViewItem Tag="Category_Music" Content="Music" />
+                        <NavigationViewItem Tag="Category_Programs" Content="Programs" />
+                        <NavigationViewItem Tag="Category_Video" Content="Video" />
+                        <NavigationViewItem Tag="Category_Photos" Content="Photos" />
+                    </NavigationViewItem.MenuItems>
+                </NavigationViewItem>
+                <NavigationViewItem Tag="Category_Unfinished" Content="Unfinished" Icon="Clock" />
+                <NavigationViewItem Tag="Category_Finished" Content="Finished" Icon="Accept" />
             </NavigationView.MenuItems>
 
             <Frame x:Name="RootFrame">
