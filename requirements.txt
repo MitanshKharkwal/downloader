@@ -1,6 +1,8 @@
 # Core engine
 requests>=2.31
 libtorrent>=2.0
+pyperclip
+win11toast
 
 # Windows desktop app
 # (Now uses C# WinUI 3 frontend, no Python GUI libraries needed)

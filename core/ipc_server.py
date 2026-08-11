@@ -115,13 +115,16 @@ def _make_handler(manager: DownloadManager, token: str):
                                 {
                                     "id": task.id,
                                     "source": task.source,
-                                    "status": task.status.value,
+                                    "status": task.status.value.upper(),
                                     "priority": task.priority.value,
                                     "downloaded_bytes": task.downloaded_bytes or 0,
                                     "total_bytes": task.total_bytes or 0,
                                     "speed_bps": task.speed_bps or 0.0,
                                     "file_path": task.dest_path or "",
                                     "error": task.error_message or "",
+                                    "category": getattr(task, "category", "") or "",
+                                    "created_at": task.created_at or 0,
+                                    "description": task.description or "",
                                 }
                             )
                         self._send_json(200, {"ok": True, "tasks": tasks})
