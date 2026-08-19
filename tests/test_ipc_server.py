@@ -10,6 +10,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from core.ipc_server import IpcServer
 from core.manager import DownloadManager
+from core.models import DownloadStatus
 
 
 def test_shutdown():
@@ -92,6 +93,33 @@ def test_set_priority():
             ipc.stop()
 
 
+def test_retry():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        state_file = os.path.join(tmpdir, "state.json")
+        manager = DownloadManager(download_dir=tmpdir, state_file=state_file)
+        task = manager.add("http://example.com/file.txt")
+        task.status = DownloadStatus.ERROR
+
+        ipc = IpcServer(manager, "test_token", port=47825)
+        ipc.start()
+        time.sleep(0.1)
+
+        try:
+            req = urllib.request.Request(
+                "http://127.0.0.1:47825/rpc",
+                data=json.dumps({"method": "retry", "args": {"task_id": task.id}}).encode(),
+                headers={"X-Auth-Token": "test_token", "Content-Type": "application/json"},
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=2) as resp:
+                data = json.loads(resp.read())
+                assert data["ok"] is True
+            assert manager.get(task.id).status in (DownloadStatus.QUEUED, DownloadStatus.CONNECTING, DownloadStatus.DOWNLOADING)
+        finally:
+            ipc.stop()
+
+
 if __name__ == "__main__":
     test_shutdown()
     test_set_priority()
+    test_retry()

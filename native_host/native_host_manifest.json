@@ -1,9 +1,0 @@
-{
-  "name": "com.downloadmanager.native_host",
-  "description": "Native messaging host for the Download Manager browser extension",
-  "path": "C:\\Users\\mitan\\Downloads\\download_manager_1\\download_manager\\native_host\\run_host.bat",
-  "type": "stdio",
-  "allowed_origins": [
-    "chrome-extension://kpgeiigbhbmhkedoelojmoagkmifleij/"
-  ]
-}

@@ -42,7 +42,7 @@ class _DownloadsPageState extends State<DownloadsPage> {
   Timer? _timer;
   
   final List<String> _categories = [
-    'All', 'Downloading', 'Completed', 'Compressed', 'Documents', 'Media', 'Other'
+    'All', 'Downloading', 'Completed', 'Programs', 'Video', 'Music', 'Documents', 'Compressed', 'Photos', 'Other'
   ];
 
   @override
@@ -152,6 +152,7 @@ class _DownloadsPageState extends State<DownloadsPage> {
                         onPause: () => _ipcClient.pauseTask(task.id),
                         onResume: () => _ipcClient.resumeTask(task.id),
                         onCancel: () => _ipcClient.cancelTask(task.id),
+                        onRetry: () => _ipcClient.retryTask(task.id),
                       );
                     },
                   ),

@@ -6,6 +6,7 @@ class TaskCard extends StatelessWidget {
   final VoidCallback onPause;
   final VoidCallback onResume;
   final VoidCallback onCancel;
+  final VoidCallback onRetry;
 
   const TaskCard({
     Key? key,
@@ -13,6 +14,7 @@ class TaskCard extends StatelessWidget {
     required this.onPause,
     required this.onResume,
     required this.onCancel,
+    required this.onRetry,
   }) : super(key: key);
 
   String _formatBytes(int bytes) {
@@ -101,10 +103,15 @@ class TaskCard extends StatelessWidget {
                         icon: const Icon(Icons.pause, color: Colors.orangeAccent),
                         onPressed: onPause,
                       )
-                    else if (task.status == 'PAUSED' || task.status == 'ERROR')
+                    else if (task.status == 'PAUSED')
                       IconButton(
                         icon: const Icon(Icons.play_arrow, color: Colors.greenAccent),
                         onPressed: onResume,
+                      )
+                    else if (task.status == 'ERROR')
+                      IconButton(
+                        icon: const Icon(Icons.play_arrow, color: Colors.greenAccent),
+                        onPressed: onRetry,
                       ),
                     IconButton(
                       icon: const Icon(Icons.cancel, color: Colors.redAccent),

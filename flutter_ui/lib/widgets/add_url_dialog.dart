@@ -42,8 +42,9 @@ class _AddUrlDialogState extends State<AddUrlDialog> {
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
           ),
           onPressed: () {
-            if (_controller.text.isNotEmpty) {
-              widget.onAdd(_controller.text);
+            final trimmedText = _controller.text.trim();
+            if (trimmedText.isNotEmpty) {
+              widget.onAdd(trimmedText);
               Navigator.pop(context);
             }
           },

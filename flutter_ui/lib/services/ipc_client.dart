@@ -95,4 +95,8 @@ class IpcClient {
   Future<void> cancelTask(String id) async {
     await _callMethod('cancel', {'task_id': id});
   }
+
+  Future<void> retryTask(String id) async {
+    await _callMethod('retry', {'task_id': id});
+  }
 }

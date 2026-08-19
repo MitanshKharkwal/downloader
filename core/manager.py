@@ -17,6 +17,7 @@ import tempfile
 import threading
 import time
 from urllib.parse import unquote, urlparse
+from typing import Any
 
 import requests
 
