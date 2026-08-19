@@ -25,6 +25,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 
 # Ensure we can type hint DownloadManager without circular imports
 from typing import TYPE_CHECKING
+from core.models import Priority
 
 if TYPE_CHECKING:
     from core.manager import DownloadManager
@@ -201,7 +202,29 @@ def _make_handler(manager: DownloadManager, token: str):
                         manager.cancel(args["task_id"])
                         self._send_json(200, {"ok": True})
                     elif method == "set_priority":
-                        manager.set_priority(args["task_id"], args["priority"])
+                        task_id = args.get("task_id")
+                        priority_raw = args.get("priority")
+                        if not task_id or priority_raw is None:
+                            self._send_json(
+                                400,
+                                {
+                                    "ok": False,
+                                    "error": "Missing task_id or priority",
+                                },
+                            )
+                            return
+                        try:
+                            priority = Priority(int(priority_raw))
+                        except (ValueError, TypeError):
+                            self._send_json(
+                                400,
+                                {
+                                    "ok": False,
+                                    "error": f"Invalid priority: {priority_raw}",
+                                },
+                            )
+                            return
+                        manager.set_priority(task_id, priority)
                         self._send_json(200, {"ok": True})
                     elif method == "clear_finished":
                         manager.clear_finished()

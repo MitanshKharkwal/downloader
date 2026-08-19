@@ -72,5 +72,46 @@ def test_retry():
     server.shutdown()
 
 
+def test_retry_completed():
+    data = os.urandom(1024 * 128)  # 128 KB
+    server = start_server(data, port=8768)
+
+    import tempfile
+    with tempfile.TemporaryDirectory() as tmpdir:
+        dm = DownloadManager(tmpdir)
+        url = "http://127.0.0.1:8768/test_retry_completed.bin"
+        task = dm.add(url)
+
+        # Wait for completion
+        while task.status != DownloadStatus.COMPLETED:
+            time.sleep(0.05)
+
+        assert os.path.exists(task.dest_path)
+
+        # Now retry the completed task
+        dm.retry(task.id)
+
+        # It should go back to queued and restart download, and dest_path should be cleared/started again
+        assert task.status in (
+            DownloadStatus.QUEUED,
+            DownloadStatus.CONNECTING,
+            DownloadStatus.DOWNLOADING,
+        )
+        assert task.completed_at is None
+        assert task.downloaded_bytes == 0
+
+        # Wait for completion again
+        while task.status != DownloadStatus.COMPLETED:
+            time.sleep(0.05)
+
+        assert os.path.exists(task.dest_path)
+        with open(task.dest_path, "rb") as f:
+            assert f.read() == data
+
+    print("test_retry_completed passed")
+    server.shutdown()
+
+
 if __name__ == "__main__":
     test_retry()
+    test_retry_completed()

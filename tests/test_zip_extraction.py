@@ -8,7 +8,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from core.manager import DownloadManager
-from core.models import DownloadTask, DownloadType
+from core.models import DownloadTask, DownloadType, DownloadStatus
 
 
 def test_zip_extraction():
@@ -76,6 +76,4 @@ def test_zip_extraction():
 
 
 if __name__ == "__main__":
-    from core.models import DownloadStatus
-
     test_zip_extraction()

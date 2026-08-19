@@ -180,9 +180,10 @@ class TorrentDownload:
             self.task.name = info.name()
             self.task.total_bytes = info.total_size()
         params.save_path = self.task.dest_path
-        # Keep partial files as .parts rather than sparse full-size files
-        # so a half-downloaded task doesn't look deceptively large on disk.
+        # Reject duplicate torrents with the same info-hash as errors,
+        # and allocate storage using sparse files on disk.
         params.flags |= lt.torrent_flags.duplicate_is_error
+        params.storage_mode = lt.storage_mode_t.storage_mode_sparse
         return params
 
     def _poll_loop(self) -> None:

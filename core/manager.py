@@ -302,14 +302,6 @@ class DownloadManager:
             # Was queued (never started) or app restarted -- just (re)start it.
             self._start_task(self._tasks[task_id])
 
-    def retry(self, task_id: str) -> None:
-        task = self._tasks.get(task_id)
-        if task and task.status in (DownloadStatus.FAILED, DownloadStatus.COMPLETED):
-            task.status = DownloadStatus.QUEUED
-            task.error_message = None
-            self._save_state()
-            self.events.emit("status", task)
-            self._maybe_start_next()
 
     def pause_all(self) -> None:
         with self._lock:
@@ -342,13 +334,18 @@ class DownloadManager:
         self._maybe_start_next()
 
     def retry(self, task_id: str) -> None:
-        """Retry a failed download."""
+        """Retry a failed or completed download."""
         task = None
         with self._lock:
             task = self._tasks.get(task_id)
-            if task and task.status == DownloadStatus.ERROR:
+            if task and task.status in (DownloadStatus.ERROR, DownloadStatus.COMPLETED):
+                if task.status == DownloadStatus.COMPLETED:
+                    _cleanup_offline_task(task)
                 task.status = DownloadStatus.QUEUED
                 task.error_message = None
+                task.downloaded_bytes = 0
+                task.total_bytes = 0
+                task.completed_at = None
             else:
                 task = None  # not retryable
 

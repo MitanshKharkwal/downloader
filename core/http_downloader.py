@@ -485,6 +485,21 @@ class HttpDownload:
                             ):
                                 seg.end = seg.start + seg.downloaded - 1
                                 self.task.total_bytes = self.task.downloaded_bytes
+                            else:
+                                consecutive_failures += 1
+                                if consecutive_failures >= MAX_CONSECUTIVE_SEGMENT_FAILURES * len(
+                                    sources
+                                ):
+                                    self.task.error_message = f"gave up after {consecutive_failures} failed attempts: stream truncated"
+                                    self._cancel_event.set()
+                                    self._pause_event.set()
+                                    self.task.status = DownloadStatus.ERROR
+                                    self.events.emit("status", self.task)
+                                    return
+                                self.task.error_message = "segment truncated, retrying..."
+                                current_source_idx = (current_source_idx + 1) % len(sources)
+                                time.sleep(1.5)
+                                continue
                 except requests.RequestException as exc:
                     if isinstance(exc, requests.HTTPError) and exc.response is not None:
                         if exc.response.status_code in (401, 403):

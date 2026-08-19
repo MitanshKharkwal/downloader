@@ -56,6 +56,8 @@ def test_explicit_filename():
     requests.head = mock_head
 
     try:
+        import shutil
+        shutil.rmtree("test_explicit_dir", ignore_errors=True)
         dm = DownloadManager("test_explicit_dir")
 
         # Test 1: Explicit filename

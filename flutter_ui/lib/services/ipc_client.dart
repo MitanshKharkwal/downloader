@@ -60,18 +60,39 @@ class IpcClient {
   }
 
   Future<void> addUrl(String url) async {
-    await _callMethod('add_url', {'url': url});
+    await _loadToken();
+    if (_token == null) throw Exception("IPC Token not found");
+
+    final response = await http.post(
+      Uri.parse('http://127.0.0.1:$_port/add'),
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Auth-Token': _token!,
+      },
+      body: jsonEncode({
+        'source': url,
+      }),
+    );
+
+    if (response.statusCode != 200) {
+      throw Exception("Add URL failed with status: ${response.statusCode}");
+    }
+
+    final data = jsonDecode(response.body);
+    if (data['ok'] != true) {
+      throw Exception("Add URL returned error: ${data['error']}");
+    }
   }
 
   Future<void> pauseTask(String id) async {
-    await _callMethod('pause_task', {'id': id});
+    await _callMethod('pause', {'task_id': id});
   }
 
   Future<void> resumeTask(String id) async {
-    await _callMethod('resume_task', {'id': id});
+    await _callMethod('resume', {'task_id': id});
   }
 
   Future<void> cancelTask(String id) async {
-    await _callMethod('cancel_task', {'id': id});
+    await _callMethod('cancel', {'task_id': id});
   }
 }

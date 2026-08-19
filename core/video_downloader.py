@@ -17,6 +17,7 @@ class VideoDownload:
         self._thread = None
         self._cancel_event = threading.Event()
         self._pause_event = threading.Event()
+        self._pause_requested = False
         self._delete_on_cancel = False
 
         self._format_id = "best"
@@ -36,6 +37,7 @@ class VideoDownload:
 
         self._cancel_event.clear()
         self._pause_event.clear()
+        self._pause_requested = False
 
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._thread.start()
@@ -44,6 +46,7 @@ class VideoDownload:
         if self.task.status != DownloadStatus.DOWNLOADING:
             return
         self.task.status = DownloadStatus.PAUSED
+        self._pause_requested = True
         self._pause_event.set()
         self._cancel_event.set()
         self.events.emit("status", self.task)
@@ -52,6 +55,7 @@ class VideoDownload:
         if self.task.status != DownloadStatus.PAUSED:
             return
         self.task.status = DownloadStatus.DOWNLOADING
+        self._pause_requested = False
         self._pause_event.clear()
         self._cancel_event.clear()
         self.events.emit("status", self.task)
@@ -61,6 +65,7 @@ class VideoDownload:
 
     def cancel(self, delete_files: bool = False) -> None:
         self._delete_on_cancel = delete_files
+        self._pause_requested = False
         self._cancel_event.set()
         self.task.status = DownloadStatus.CANCELED
         self.events.emit("status", self.task)
@@ -100,12 +105,13 @@ class VideoDownload:
                 ydl.download([self._url])
 
             if self._cancel_event.is_set():
-                if self._delete_on_cancel:
-                    try:
-                        if os.path.exists(self.task.dest_path):
-                            os.remove(self.task.dest_path)
-                    except:
-                        pass
+                if not getattr(self, "_pause_requested", False):
+                    if self._delete_on_cancel:
+                        try:
+                            if os.path.exists(self.task.dest_path):
+                                os.remove(self.task.dest_path)
+                        except:
+                            pass
                 return
 
             self.task.status = DownloadStatus.COMPLETED
@@ -114,8 +120,12 @@ class VideoDownload:
             self.events.emit("status", self.task)
 
         except Exception as e:
-            if str(e) == "Cancelled":
-                pass
+            if getattr(self, "_pause_requested", False):
+                self.task.status = DownloadStatus.PAUSED
+                self.events.emit("status", self.task)
+            elif self._cancel_event.is_set():
+                self.task.status = DownloadStatus.CANCELED
+                self.events.emit("status", self.task)
             else:
                 self.task.status = DownloadStatus.ERROR
                 self.task.error_message = str(e)
