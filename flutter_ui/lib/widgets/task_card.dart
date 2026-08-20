@@ -1,139 +1,411 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_ui/models/download_task.dart';
 
-class TaskCard extends StatelessWidget {
-  final DownloadTask task;
-  final VoidCallback onPause;
-  final VoidCallback onResume;
-  final VoidCallback onCancel;
-  final VoidCallback onRetry;
+import '../models/download_task.dart';
+import '../theme/app_theme.dart';
 
+class TaskCard extends StatefulWidget {
   const TaskCard({
-    Key? key,
+    super.key,
     required this.task,
     required this.onPause,
     required this.onResume,
-    required this.onCancel,
     required this.onRetry,
-  }) : super(key: key);
+    required this.onCancel,
+    this.compact = false,
+  });
 
-  String _formatBytes(int bytes) {
-    if (bytes < 1024) return '$bytes B';
-    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
-    if (bytes < 1024 * 1024 * 1024) return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
-    return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB';
-  }
+  final DownloadTask task;
+  final VoidCallback onPause;
+  final VoidCallback onResume;
+  final VoidCallback onRetry;
+  final VoidCallback onCancel;
 
-  String _formatSpeed(double bps) {
-    return '${_formatBytes(bps.toInt())}/s';
-  }
+  /// Hides speed/ETA columns on narrow widths.
+  final bool compact;
+
+  @override
+  State<TaskCard> createState() => _TaskCardState();
+}
+
+class _TaskCardState extends State<TaskCard> {
+  bool _hovered = false;
 
   @override
   Widget build(BuildContext context) {
-    final progress = task.totalBytes > 0 ? task.downloadedBytes / task.totalBytes : 0.0;
-    final filename = task.filePath.isNotEmpty 
-        ? task.filePath.split('\\').last.split('/').last 
-        : task.source.split('/').last;
+    final DownloadTask task = widget.task;
+    final TextTheme text = Theme.of(context).textTheme;
+    final bool dimmed =
+        task.status == TaskStatus.paused || task.status == TaskStatus.queued;
+    final bool isError = task.status == TaskStatus.error;
+    final bool isDone = task.status == TaskStatus.completed;
 
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      elevation: 4,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      color: const Color(0xFF232533),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    filename,
-                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: _getStatusColor(task.status).withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    task.status,
-                    style: TextStyle(color: _getStatusColor(task.status), fontSize: 12, fontWeight: FontWeight.bold),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: LinearProgressIndicator(
-                value: progress,
-                backgroundColor: Colors.white12,
-                valueColor: AlwaysStoppedAnimation<Color>(_getStatusColor(task.status)),
-                minHeight: 8,
-              ),
-            ),
-            const SizedBox(height: 12),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Column(
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: AnimatedContainer(
+        duration: AppTheme.fast,
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+        decoration: BoxDecoration(
+          color: isError
+              ? Color.alphaBlend(AppColors.dangerSoft, AppColors.surface)
+              : _hovered
+                  ? AppColors.surfaceHover
+                  : AppColors.surface,
+          borderRadius: AppRadius.md,
+          border: Border.all(
+            color: isError
+                ? AppColors.danger.withValues(alpha: 0.45)
+                : _hovered
+                    ? AppColors.borderStrong
+                    : AppColors.border,
+          ),
+        ),
+        child: AnimatedOpacity(
+          duration: AppTheme.fast,
+          opacity: dimmed ? 0.55 : 1,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: <Widget>[
+              _FileIcon(task: task),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '${_formatBytes(task.downloadedBytes)} / ${_formatBytes(task.totalBytes)}',
-                      style: const TextStyle(color: Colors.white70, fontSize: 13),
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    Row(
+                      children: <Widget>[
+                        Flexible(
+                          child: Text(
+                            task.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: text.bodyMedium?.copyWith(
+                              fontSize: 13.5,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.textPrimary,
+                            ),
+                          ),
+                        ),
+                        if (isDone) ...<Widget>[
+                          const SizedBox(width: 8),
+                          const Icon(
+                            Icons.check_circle_rounded,
+                            size: 15,
+                            color: AppColors.success,
+                          ),
+                        ],
+                      ],
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      task.status == 'DOWNLOADING' ? _formatSpeed(task.speedBps) : '--',
-                      style: const TextStyle(color: Colors.tealAccent, fontSize: 12),
-                    ),
+                    const SizedBox(height: 7),
+                    if (isDone)
+                      Text(
+                        '${task.sizeLabel} · Completed',
+                        style: text.labelSmall?.copyWith(
+                          color: AppColors.textMuted,
+                          fontSize: 11,
+                        ),
+                      )
+                    else if (isError)
+                      Text(
+                        task.errorMessage ?? 'Download failed',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: text.labelSmall?.copyWith(
+                          color: AppColors.danger,
+                          fontSize: 11,
+                        ),
+                      )
+                    else
+                      Row(
+                        children: <Widget>[
+                          Expanded(child: _ProgressBar(task: task)),
+                          const SizedBox(width: 10),
+                          SizedBox(
+                            width: 34,
+                            child: Text(
+                              '${(task.progress * 100).round()}%',
+                              textAlign: TextAlign.right,
+                              style: text.labelSmall?.copyWith(
+                                color: AppColors.textMuted,
+                                fontSize: 11,
+                                fontFeatures: const <FontFeature>[
+                                  FontFeature.tabularFigures(),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                   ],
                 ),
-                Row(
-                  children: [
-                    if (task.status == 'DOWNLOADING')
-                      IconButton(
-                        icon: const Icon(Icons.pause, color: Colors.orangeAccent),
-                        onPressed: onPause,
-                      )
-                    else if (task.status == 'PAUSED')
-                      IconButton(
-                        icon: const Icon(Icons.play_arrow, color: Colors.greenAccent),
-                        onPressed: onResume,
-                      )
-                    else if (task.status == 'ERROR')
-                      IconButton(
-                        icon: const Icon(Icons.play_arrow, color: Colors.greenAccent),
-                        onPressed: onRetry,
-                      ),
-                    IconButton(
-                      icon: const Icon(Icons.cancel, color: Colors.redAccent),
-                      onPressed: onCancel,
-                    ),
-                  ],
-                )
-              ],
+              ),
+              const SizedBox(width: 16),
+              _Stats(task: task, compact: widget.compact),
+              const SizedBox(width: 8),
+              _Actions(
+                task: task,
+                visible: _hovered,
+                onPause: widget.onPause,
+                onResume: widget.onResume,
+                onRetry: widget.onRetry,
+                onCancel: widget.onCancel,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _FileIcon extends StatelessWidget {
+  const _FileIcon({required this.task});
+
+  final DownloadTask task;
+
+  @override
+  Widget build(BuildContext context) {
+    final Color tint = task.status == TaskStatus.error
+        ? AppColors.danger
+        : task.status == TaskStatus.completed
+            ? AppColors.success
+            : AppColors.accent;
+
+    return Container(
+      height: 38,
+      width: 38,
+      decoration: BoxDecoration(
+        color: tint.withValues(alpha: 0.12),
+        borderRadius: AppRadius.sm,
+        border: Border.all(color: tint.withValues(alpha: 0.22)),
+      ),
+      child: Icon(task.category.icon, size: 18, color: tint),
+    );
+  }
+}
+
+class _ProgressBar extends StatelessWidget {
+  const _ProgressBar({required this.task});
+
+  final DownloadTask task;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: AppRadius.pill,
+      child: SizedBox(
+        height: 3,
+        child: Stack(
+          children: <Widget>[
+            const ColoredBox(color: AppColors.track),
+            AnimatedFractionallySizedBox(
+              duration: AppTheme.medium,
+              curve: Curves.easeOut,
+              widthFactor: task.progress.clamp(0.0, 1.0),
+              alignment: Alignment.centerLeft,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  borderRadius: AppRadius.pill,
+                  color: task.status.color,
+                ),
+              ),
             ),
           ],
         ),
       ),
     );
   }
+}
 
-  Color _getStatusColor(String status) {
-    switch (status) {
-      case 'DOWNLOADING': return Colors.blueAccent;
-      case 'PAUSED': return Colors.orangeAccent;
-      case 'COMPLETED': return Colors.greenAccent;
-      case 'ERROR': return Colors.redAccent;
-      default: return Colors.grey;
+class _Stats extends StatelessWidget {
+  const _Stats({required this.task, required this.compact});
+
+  final DownloadTask task;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    final TextTheme text = Theme.of(context).textTheme;
+
+    TextStyle? style(Color color) => text.labelSmall?.copyWith(
+          color: color,
+          fontSize: 11.5,
+          fontFeatures: const <FontFeature>[FontFeature.tabularFigures()],
+        );
+
+    return Row(
+      children: <Widget>[
+        SizedBox(
+          width: 68,
+          child: Text(
+            task.sizeLabel,
+            textAlign: TextAlign.right,
+            style: style(AppColors.textSecondary),
+          ),
+        ),
+        if (!compact) ...<Widget>[
+          SizedBox(
+            width: 84,
+            child: Text(
+              task.speedLabel,
+              textAlign: TextAlign.right,
+              style: style(
+                task.status.isActive
+                    ? AppColors.textPrimary
+                    : AppColors.textMuted,
+              ),
+            ),
+          ),
+          SizedBox(
+            width: 72,
+            child: Text(
+              task.etaLabel,
+              textAlign: TextAlign.right,
+              style: style(AppColors.textMuted),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _Actions extends StatelessWidget {
+  const _Actions({
+    required this.task,
+    required this.visible,
+    required this.onPause,
+    required this.onResume,
+    required this.onRetry,
+    required this.onCancel,
+  });
+
+  final DownloadTask task;
+  final bool visible;
+  final VoidCallback onPause;
+  final VoidCallback onResume;
+  final VoidCallback onRetry;
+  final VoidCallback onCancel;
+
+  @override
+  Widget build(BuildContext context) {
+    final List<Widget> buttons = <Widget>[];
+
+    switch (task.status) {
+      case TaskStatus.downloading:
+        buttons.add(
+          _IconAction(icon: Icons.pause_rounded, tip: 'Pause', onTap: onPause),
+        );
+        break;
+      case TaskStatus.paused:
+      case TaskStatus.queued:
+        buttons.add(
+          _IconAction(
+            icon: Icons.play_arrow_rounded,
+            tip: 'Resume',
+            onTap: onResume,
+          ),
+        );
+        break;
+      case TaskStatus.error:
+        buttons.add(
+          _IconAction(
+            icon: Icons.refresh_rounded,
+            tip: 'Retry',
+            onTap: onRetry,
+            color: AppColors.danger,
+          ),
+        );
+        break;
+      case TaskStatus.completed:
+        buttons.add(
+          _IconAction(
+            icon: Icons.folder_open_rounded,
+            tip: 'Show in folder',
+            onTap: () {},
+          ),
+        );
+        break;
     }
+
+    buttons.add(
+      _IconAction(
+        icon: Icons.close_rounded,
+        tip: task.status == TaskStatus.completed ? 'Remove' : 'Cancel',
+        onTap: onCancel,
+      ),
+    );
+
+    return SizedBox(
+      width: 72,
+      child: AnimatedOpacity(
+        duration: AppTheme.fast,
+        opacity: visible ? 1 : 0,
+        child: IgnorePointer(
+          ignoring: !visible,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: buttons,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _IconAction extends StatefulWidget {
+  const _IconAction({
+    required this.icon,
+    required this.tip,
+    required this.onTap,
+    this.color,
+  });
+
+  final IconData icon;
+  final String tip;
+  final VoidCallback onTap;
+  final Color? color;
+
+  @override
+  State<_IconAction> createState() => _IconActionState();
+}
+
+class _IconActionState extends State<_IconAction> {
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final Color fg = widget.color ??
+        (_hovered ? AppColors.textPrimary : AppColors.textSecondary);
+
+    return Padding(
+      padding: const EdgeInsets.only(left: 4),
+      child: Tooltip(
+        message: widget.tip,
+        child: MouseRegion(
+          cursor: SystemMouseCursors.click,
+          onEnter: (_) => setState(() => _hovered = true),
+          onExit: (_) => setState(() => _hovered = false),
+          child: GestureDetector(
+            onTap: widget.onTap,
+            child: AnimatedContainer(
+              duration: AppTheme.fast,
+              height: 28,
+              width: 28,
+              decoration: BoxDecoration(
+                color: _hovered ? AppColors.surfaceActive : Colors.transparent,
+                borderRadius: AppRadius.sm,
+                border: Border.all(
+                  color: _hovered ? AppColors.borderStrong : Colors.transparent,
+                ),
+              ),
+              child: Icon(widget.icon, size: 15, color: fg),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
