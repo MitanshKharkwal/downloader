@@ -51,7 +51,9 @@ class _TaskCardState extends State<TaskCard> with SingleTickerProviderStateMixin
   void didUpdateWidget(TaskCard oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.task.status != TaskStatus.completed && widget.task.status == TaskStatus.completed) {
-      _pulseController.forward(from: 0.0).then((_) => _pulseController.reverse());
+      _pulseController.forward(from: 0.0).then((_) {
+        if (mounted) _pulseController.reverse();
+      });
     }
   }
 
@@ -295,7 +297,7 @@ class _Stats extends StatelessWidget {
         ),
         if (!compact) ...<Widget>[
           if (task.status.isActive) ...<Widget>[
-            SpeedSparkline(speedBytesPerSec: task.speedBytesPerSec),
+            SpeedSparkline(speedBytesPerSec: task.speedBytesPerSec, active: task.status.isActive),
             const SizedBox(width: 8),
           ],
           SizedBox(

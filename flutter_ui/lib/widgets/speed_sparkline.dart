@@ -6,9 +6,11 @@ class SpeedSparkline extends StatefulWidget {
   const SpeedSparkline({
     super.key,
     required this.speedBytesPerSec,
+    required this.active,
   });
 
   final double speedBytesPerSec;
+  final bool active;
 
   @override
   State<SpeedSparkline> createState() => _SpeedSparklineState();
@@ -27,6 +29,9 @@ class _SpeedSparklineState extends State<SpeedSparkline> {
   @override
   void didUpdateWidget(SpeedSparkline oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (!oldWidget.active && widget.active) {
+      _history.clear();
+    }
     if (oldWidget.speedBytesPerSec != widget.speedBytesPerSec) {
       _addSample(widget.speedBytesPerSec);
     }
@@ -59,7 +64,7 @@ class _SpeedSparklineState extends State<SpeedSparkline> {
       child: LineChart(
         LineChartData(
           minX: 0,
-          maxX: (_maxSamples - 1).toDouble(),
+          maxX: (_history.length - 1).clamp(1, _maxSamples - 1).toDouble(),
           minY: 0,
           maxY: maxY * 1.1, // 10% headroom
           lineTouchData: const LineTouchData(enabled: false),
