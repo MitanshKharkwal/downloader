@@ -1,38 +1,54 @@
-# Download manager
+# downloader
 
-An IDM-style download manager: multi-connection resumable HTTP
-downloads, magnet/torrent support, a Windows desktop app, and a Chrome
-extension that captures downloads and magnet links from the browser.
+An IDM-style download manager: multi-connection resumable HTTP downloads, magnet/torrent support, YouTube/video downloads via yt-dlp, a Flutter desktop app, and a Chrome extension that captures downloads and magnet links straight from the browser.
 
-## Layout
+**Status:** active personal project, in development. The core engine and IPC layer are solid and tested; the Flutter UI and browser extension work but haven't been packaged for easy install yet — see [Setup](#setup) below for the current (manual, developer-oriented) way to run it.
 
-```
-core/               engine: DownloadManager, HTTP + torrent backends (see core/ for its own README notes)
-DownloadManagerUI/   C# WinUI 3 native desktop frontend
-browser_extension/   Chrome extension (Manifest V3): capture + interception
-native_host/         bridges the extension to the running desktop app
-android_app/          Kivy mobile app shell + Android intent-filter capture (see its own README -- libtorrent-on-Android is an open problem)
-tests/                core engine integration tests
-example_cli.py         terminal demo of the core engine alone
-```
+<!-- Add a screenshot or short GIF of the Flutter UI here before sharing this repo widely — it's the single best thing you can add. -->
 
-## How the pieces connect
+## Features
+
+- Segmented, resumable HTTP downloads (multi-connection, auto-retry, resume across app restarts)
+- Torrent/magnet downloads via libtorrent
+- Video downloads via yt-dlp
+- Auto-categorization by file type, auto-extraction of archives
+- Global bandwidth caps with time-of-day scheduling, task priority levels
+- Chrome extension: captures download links and magnet clicks and forwards them to the desktop app
+- Flutter UI with a monochrome Material 3 design
+
+## Architecture
 
 ```
 Chrome extension (background.js)
     -- chrome.runtime.sendNativeMessage -->
 native_host/host.py (spawned per-message by Chrome)
     -- HTTP POST /add, localhost only, token-authed -->
-DownloadManager Daemon (IPC server in python)
+DownloadManager daemon (Python, core/ipc_server.py)
     -- in-process call -->
-core.DownloadManager
+core.DownloadManager (core/manager.py)
+
+Flutter UI (flutter_ui/)
+    -- JSON-RPC over HTTP, POST /rpc -->
+DownloadManager daemon (same process as above)
 ```
 
-The extension never talks to the desktop app directly -- it can't;
-browser extensions can't open arbitrary local sockets. Native
-messaging is Chrome's sanctioned way to reach a local process, and
-`host.py` is deliberately as thin as possible: read one message,
-forward it over plain HTTP, relay the response, exit.
+The daemon is a single headless Python process (`daemon.py`) that owns all download state. Two clients talk to it:
+- The **browser extension**, via the native messaging host, using a legacy `POST /add` endpoint (this predates the RPC layer and is kept because it's the only way Chrome's native messaging can reach a local process).
+- The **Flutter UI**, via a `POST /rpc` JSON method-dispatch endpoint (`list_tasks`, `pause`, `resume`, `cancel`, `retry`, `set_priority`, `clear_finished`, `add_video_task`, `get_config`, `set_config`, `shutdown`).
+
+Both endpoints are localhost-only and token-authenticated.
+
+## Layout
+
+```
+core/               engine: DownloadManager, HTTP/torrent/video backends, IPC server
+daemon.py           entry point that starts the engine + IPC server
+flutter_ui/         Flutter desktop app (current primary frontend)
+browser_extension/  Chrome extension (Manifest V3): capture + interception
+native_host/        bridges the extension to the running daemon
+tests/              engine + IPC integration tests (pytest)
+DownloadManagerUI_old/  legacy C# WinUI3 frontend, superseded by flutter_ui/, kept for reference only
+```
 
 ## Setup
 
@@ -40,110 +56,45 @@ forward it over plain HTTP, relay the response, exit.
 pip install -r requirements.txt
 ```
 
-### 1. Start the Core Daemon
+### 1. Start the daemon
 
 ```
-cd download_manager
 python daemon.py
 ```
 
-Downloads land in `~/.download_manager/downloads`. First run creates
-`~/.download_manager/ipc_token.txt` -- the native host needs this file
-to exist (i.e. the app needs to have run at least once) before it can
-authenticate to the IPC server.
+Downloads land in `~/.download_manager/downloads`. First run creates `~/.download_manager/ipc_token.txt` — other clients need this file to exist before they can authenticate to the daemon.
 
-### 2. Start the Windows UI
+### 2. Start the Flutter UI
 
 ```
-cd DownloadManagerUI
-dotnet run
+cd flutter_ui
+flutter pub get
+flutter run -d windows   # or macos / linux, depending on your platform
 ```
 
-### 2. Browser extension
+### 3. Browser extension (optional)
 
-In Chrome: `chrome://extensions` -> enable Developer mode -> "Load
-unpacked" -> select `browser_extension/`. Note the extension ID Chrome
-assigns it.
+In Chrome: `chrome://extensions` → enable Developer mode → "Load unpacked" → select `browser_extension/`. Note the extension ID Chrome assigns it.
 
-### 3. Native messaging host
+### 4. Native messaging host (optional, needed for the browser extension)
 
 ```
 cd native_host
-python register_native_host.py --extension-id <the ID from step 2>
+python register_native_host.py --extension-id <the ID from step 3>
 ```
 
-On Windows this writes `run_host.bat` + `native_host_manifest.json`
-next to `host.py` and registers the manifest under
-`HKEY_CURRENT_USER\Software\Google\Chrome\NativeMessagingHosts` so
-Chrome can find it. (On Mac/Linux, the registry step is skipped --
-copy the generated manifest into Chrome's `NativeMessagingHosts`
-directory for your platform instead; see Chrome's native messaging
-docs for the exact path per OS.)
+On Windows this writes `run_host.bat` + `native_host_manifest.json` next to `host.py` and registers the manifest under `HKEY_CURRENT_USER\Software\Google\Chrome\NativeMessagingHosts`. On Mac/Linux, copy the generated manifest into Chrome's `NativeMessagingHosts` directory for your platform instead (see [Chrome's native messaging docs](https://developer.chrome.com/docs/apps/nativeMessaging/)).
 
-Reload the extension after registering so it picks up the native host.
+## Testing
 
-## What's tested and how
+```
+pytest tests/
+```
 
-Every piece here was actually exercised, not just written:
+## A note on intended use
 
-- **Core engine**: real multi-connection HTTP download verified
-  byte-for-byte (sha256) against a reference download; pause/resume
-  verified deterministically against a local throttled server,
-  including simulating an app restart mid-download; torrent engine
-  verified against real libtorrent sessions and magnet parsing;
-  manager's concurrency queueing verified with a real two-task queue.
-- **Desktop app**: rendered and screenshotted under Xvfb, with a task
-  injected through the real IPC server (simulating the native host)
-  and a real segmented HTTP download running in the same UI tick.
-- **Browser extension**: loaded in real Chromium via Playwright.
-  Confirmed the content script actually prevents magnet-link
-  navigation and forwards it, confirmed the background service worker
-  correctly calls the native messaging API, and confirmed the full
-  chain end-to-end -- real click, real content script, real service
-  worker, real OS-level native-messaging-host discovery, real
-  `host.py` subprocess, real HTTP round trip to a real IPC server,
-  landing as a real task in a real `DownloadManager`. The popup's
-  connection status was verified to flip from "not reachable" to
-  "Connected" once the host was actually registered.
+This tool can download torrents and video from third-party sites via yt-dlp. It's built the same way any general-purpose download manager is — it doesn't target or circumvent any specific service — but you're responsible for using it in line with the terms of service of whatever site you point it at, and with content you have the rights to download. It's intended for personal backups, your own content, and public-domain or freely licensed material.
 
-- **Android app**: same UI/core-reuse pattern as the desktop app,
-  tested headlessly under Xvfb with a desktop stub standing in for the
-  real Android intent APIs (which can't run outside a device). All
-  three ways a download enters the queue -- cold-start intent, a
-  live intent while the app's already open, and manual add -- verified
-  producing a real task and a real UI row. This testing caught a real
-  bug that also affects the Windows app: a malformed magnet link (bad
-  info-hash) crashed the whole process instead of failing just that
-  one task; now fixed in `core/torrent_engine.py`.
+## License
 
-What's *not* covered by these tests, because it's inherently
-OS/browser-installation-specific and can't be reproduced in a sandbox:
-the Windows registry registration step itself (code is written
-carefully but untested on real Windows), real BitTorrent peer
-traffic (sandboxed networking here only permits a fixed set of
-outbound domains, not arbitrary peer IPs), and everything Android-specific
-that requires a real device/emulator (the buildozer build itself, the
-pyjnius intent calls, and whether the manifest's intent filters actually
-get Android to route magnet taps here -- see `android_app/README.md`).
-
-### 4. Android app
-
-See `android_app/README.md` -- setup, what's tested, and importantly
-the libtorrent-on-Android gap (magnet capture works; actually
-downloading a magnet doesn't yet, since there's no prebuilt libtorrent
-for Android).
-
-## Known gaps (next milestones)
-
-- **libtorrent on Android** -- the single biggest open item. See
-  `android_app/README.md` for the options being weighed.
-- **System tray icon** for the Windows app (minimize-to-tray,
-  IDM-style) -- straightforward addition via `pystray`, not yet built.
-- **Global bandwidth throttling** across all active downloads.
-- **Torrent resume-data persistence** across app restarts (libtorrent
-  supports saving `.fastresume` data; only in-session pause/resume is
-  wired up right now).
-- The extension's download interception (`chrome.downloads.onCreated`
-  + cancel) is implemented but only unit-testable at the message-passing
-  level in this sandbox -- worth a manual smoke test with a real file
-  download once you're running this in an actual Chrome profile.
+MIT — see [LICENSE](LICENSE).

@@ -16,3 +16,9 @@ obj/
 native_host/native_host_manifest.json
 native_host/run_host.bat
 ui_errors.log
+
+# Test run artifacts
+resume_out/
+queue_out/
+test_*_dir/
+smoke_out/
