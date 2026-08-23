@@ -437,6 +437,19 @@ class DownloadManager:
             self._save_state()
             self.events.emit("tasks_cleared", to_remove)
 
+    def remove_task(self, task_id: str, delete_files: bool = False) -> None:
+        """Remove a specific task from the list, optionally deleting its files."""
+        with self._lock:
+            task = self._tasks.get(task_id)
+            if not task:
+                return
+            if delete_files:
+                _cleanup_offline_task(task)
+            self._tasks.pop(task_id, None)
+
+        self._save_state()
+        self.events.emit("tasks_cleared", [task_id])
+
     def get(self, task_id: str) -> DownloadTask | None:
         return self._tasks.get(task_id)
 

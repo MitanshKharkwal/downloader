@@ -229,6 +229,12 @@ def _make_handler(manager: DownloadManager, token: str):
                     elif method == "clear_finished":
                         manager.clear_finished()
                         self._send_json(200, {"ok": True})
+                    elif method == "remove_task":
+                        task_id = args.get("task_id")
+                        delete_files = args.get("delete_files", False)
+                        if task_id:
+                            manager.remove_task(task_id, delete_files)
+                        self._send_json(200, {"ok": True})
                     elif method == "shutdown":
                         manager.shutdown()
                         self._send_json(200, {"ok": True})
