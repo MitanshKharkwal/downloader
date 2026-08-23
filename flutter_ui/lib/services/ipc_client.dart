@@ -99,4 +99,12 @@ class IpcClient {
   Future<void> retryTask(String id) async {
     await _callMethod('retry', {'task_id': id});
   }
+
+  Future<void> removeTask(String id) async {
+    await _callMethod('remove_task', {'task_id': id, 'delete_files': false});
+  }
+
+  Future<void> setPriority(String id, int priority) async {
+    await _callMethod('set_priority', {'task_id': id, 'priority': priority});
+  }
 }

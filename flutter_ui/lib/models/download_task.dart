@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../theme/app_theme.dart';
 
-enum TaskCategory { video, music, programs, documents }
+enum TaskCategory { video, music, programs, documents, compressed, photos, other }
 
 extension TaskCategoryX on TaskCategory {
   String get label {
@@ -15,24 +16,36 @@ extension TaskCategoryX on TaskCategory {
         return 'Programs';
       case TaskCategory.documents:
         return 'Documents';
+      case TaskCategory.compressed:
+        return 'Compressed';
+      case TaskCategory.photos:
+        return 'Photos';
+      case TaskCategory.other:
+        return 'Other';
     }
   }
 
   IconData get icon {
     switch (this) {
       case TaskCategory.video:
-        return Icons.play_circle_outline_rounded;
+        return PhosphorIcons.videoCamera(PhosphorIconsStyle.light);
       case TaskCategory.music:
-        return Icons.graphic_eq_rounded;
+        return PhosphorIcons.musicNote(PhosphorIconsStyle.light);
       case TaskCategory.programs:
-        return Icons.terminal_rounded;
+        return PhosphorIcons.terminal(PhosphorIconsStyle.light);
       case TaskCategory.documents:
-        return Icons.description_outlined;
+        return PhosphorIcons.fileText(PhosphorIconsStyle.light);
+      case TaskCategory.compressed:
+        return PhosphorIcons.archive(PhosphorIconsStyle.light);
+      case TaskCategory.photos:
+        return PhosphorIcons.image(PhosphorIconsStyle.light);
+      case TaskCategory.other:
+        return PhosphorIcons.file(PhosphorIconsStyle.light);
     }
   }
 }
 
-enum TaskStatus { downloading, paused, completed, error, queued }
+enum TaskStatus { downloading, paused, completed, error, queued, canceled }
 
 extension TaskStatusX on TaskStatus {
   String get label {
@@ -47,6 +60,8 @@ extension TaskStatusX on TaskStatus {
         return 'Failed';
       case TaskStatus.queued:
         return 'Queued';
+      case TaskStatus.canceled:
+        return 'Canceled';
     }
   }
 
@@ -62,6 +77,8 @@ extension TaskStatusX on TaskStatus {
         return AppColors.danger;
       case TaskStatus.queued:
         return AppColors.warning;
+      case TaskStatus.canceled:
+        return AppColors.textMuted;
     }
   }
 
@@ -79,14 +96,18 @@ class DownloadTask {
     required this.speedBytesPerSec,
     required this.status,
     this.errorMessage,
+    this.priority,
   });
 
   factory DownloadTask.fromJson(Map<String, dynamic> json) {
-    TaskCategory category = TaskCategory.documents;
+    TaskCategory category = TaskCategory.other;
     final catStr = json['category']?.toString().toLowerCase() ?? '';
     if (catStr.contains('video')) category = TaskCategory.video;
     else if (catStr.contains('music') || catStr.contains('audio')) category = TaskCategory.music;
-    else if (catStr.contains('program') || catStr.contains('exe') || catStr.contains('compressed')) category = TaskCategory.programs;
+    else if (catStr.contains('program') || catStr.contains('exe')) category = TaskCategory.programs;
+    else if (catStr.contains('compressed') || catStr.contains('zip')) category = TaskCategory.compressed;
+    else if (catStr.contains('photo') || catStr.contains('image')) category = TaskCategory.photos;
+    else if (catStr.contains('document') || catStr.contains('pdf')) category = TaskCategory.documents;
 
     TaskStatus status = TaskStatus.queued;
     final statStr = json['status']?.toString().toUpperCase() ?? '';
@@ -94,6 +115,7 @@ class DownloadTask {
     else if (statStr == 'PAUSED') status = TaskStatus.paused;
     else if (statStr == 'COMPLETED') status = TaskStatus.completed;
     else if (statStr == 'ERROR') status = TaskStatus.error;
+    else if (statStr == 'CANCELED') status = TaskStatus.canceled;
 
     final totalBytes = json['total_bytes'] ?? 0;
     final downloadedBytes = json['downloaded_bytes'] ?? 0;
@@ -112,7 +134,8 @@ class DownloadTask {
       progress: progress,
       speedBytesPerSec: (json['speed_bps'] ?? 0.0).toDouble(),
       status: status,
-      errorMessage: json['error'],
+      errorMessage: json['error_message'] ?? json['error'],
+      priority: json['priority'],
     );
   }
 
@@ -134,6 +157,7 @@ class DownloadTask {
   double speedBytesPerSec;
   TaskStatus status;
   String? errorMessage;
+  int? priority;
 
   int get downloadedBytes => (sizeBytes * progress).round();
   int get remainingBytes => (sizeBytes - downloadedBytes).clamp(0, sizeBytes);
@@ -152,6 +176,7 @@ class DownloadTask {
   String get etaLabel {
     if (status == TaskStatus.completed) return 'Done';
     if (status == TaskStatus.error) return 'Failed';
+    if (status == TaskStatus.canceled) return 'Canceled';
     if (status == TaskStatus.paused) return 'Paused';
     if (status == TaskStatus.queued) return 'Queued';
     final int? eta = etaSeconds;

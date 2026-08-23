@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../models/download_task.dart';
 import '../theme/app_theme.dart';
@@ -12,27 +13,42 @@ class NavItem {
   final TaskCategory? category;
 }
 
-const List<NavItem> kNavItems = <NavItem>[
-  NavItem(label: 'All Downloads', icon: Icons.download_rounded),
+final List<NavItem> kNavItems = <NavItem>[
+  NavItem(label: 'All Downloads', icon: PhosphorIcons.download(PhosphorIconsStyle.light)),
   NavItem(
     label: 'Video',
-    icon: Icons.play_circle_outline_rounded,
+    icon: PhosphorIcons.videoCamera(PhosphorIconsStyle.light),
     category: TaskCategory.video,
   ),
   NavItem(
     label: 'Music',
-    icon: Icons.graphic_eq_rounded,
+    icon: PhosphorIcons.musicNote(PhosphorIconsStyle.light),
     category: TaskCategory.music,
   ),
   NavItem(
     label: 'Programs',
-    icon: Icons.terminal_rounded,
+    icon: PhosphorIcons.terminal(PhosphorIconsStyle.light),
     category: TaskCategory.programs,
   ),
   NavItem(
     label: 'Documents',
-    icon: Icons.description_outlined,
+    icon: PhosphorIcons.fileText(PhosphorIconsStyle.light),
     category: TaskCategory.documents,
+  ),
+  NavItem(
+    label: 'Compressed',
+    icon: PhosphorIcons.archive(PhosphorIconsStyle.light),
+    category: TaskCategory.compressed,
+  ),
+  NavItem(
+    label: 'Photos',
+    icon: PhosphorIcons.image(PhosphorIconsStyle.light),
+    category: TaskCategory.photos,
+  ),
+  NavItem(
+    label: 'Other',
+    icon: PhosphorIcons.file(PhosphorIconsStyle.light),
+    category: TaskCategory.other,
   ),
 ];
 
@@ -88,27 +104,46 @@ class Sidebar extends StatelessWidget {
               ),
             ),
           Expanded(
-            child: ListView.builder(
-              padding: EdgeInsets.symmetric(horizontal: collapsed ? 12 : 12),
-              itemCount: kNavItems.length,
-              itemBuilder: (BuildContext context, int index) {
-                return _SidebarTile(
-                  item: kNavItems[index],
-                  selected: index == selected,
-                  count: counts[index] ?? 0,
-                  collapsed: collapsed,
-                  onTap: () => onSelect(index),
-                );
-              },
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: Stack(
+                children: <Widget>[
+                  AnimatedPositioned(
+                    duration: const Duration(milliseconds: 200),
+                    curve: Curves.easeInOutCubic,
+                    top: selected * 38.0,
+                    left: 0,
+                    right: 0,
+                    height: 36,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: AppColors.surfaceActive,
+                        borderRadius: AppRadius.sm,
+                      ),
+                    ),
+                  ),
+                  Column(
+                    children: List<Widget>.generate(kNavItems.length, (int index) {
+                      return _SidebarTile(
+                        item: kNavItems[index],
+                        selected: index == selected,
+                        count: counts[index] ?? 0,
+                        collapsed: collapsed,
+                        onTap: () => onSelect(index),
+                      );
+                    }),
+                  ),
+                ],
+              ),
             ),
           ),
           const Divider(),
           Padding(
             padding: EdgeInsets.fromLTRB(12, 10, 12, 14),
             child: _SidebarTile(
-              item: const NavItem(
+              item: NavItem(
                 label: 'Settings',
-                icon: Icons.settings_outlined,
+                icon: PhosphorIcons.gear(PhosphorIconsStyle.light),
               ),
               selected: false,
               count: 0,
@@ -140,8 +175,8 @@ class _Brand extends StatelessWidget {
           end: Alignment.bottomRight,
         ),
       ),
-      child: const Icon(
-        Icons.arrow_downward_rounded,
+      child: Icon(
+        PhosphorIcons.arrowDown(PhosphorIconsStyle.light),
         size: 16,
         color: Colors.white,
       ),
@@ -200,12 +235,12 @@ class _NewDownloadButtonState extends State<_NewDownloadButton> {
               borderRadius: AppRadius.md,
             ),
             child: widget.collapsed
-                ? const Icon(Icons.add_rounded, size: 18, color: Colors.white)
+                ? Icon(PhosphorIcons.plus(PhosphorIconsStyle.light), size: 18, color: Colors.white)
                 : Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: <Widget>[
-                      const Icon(
-                        Icons.add_rounded,
+                      Icon(
+                        PhosphorIcons.plus(PhosphorIconsStyle.light),
                         size: 17,
                         color: Colors.white,
                       ),
@@ -258,11 +293,9 @@ class _SidebarTileState extends State<_SidebarTile> {
         : _hovered
             ? AppColors.textSecondary
             : AppColors.textMuted;
-    final Color bg = widget.selected
-        ? AppColors.surfaceActive
-        : _hovered
-            ? AppColors.surface
-            : Colors.transparent;
+    final Color bg = _hovered && !widget.selected
+        ? AppColors.surface
+        : Colors.transparent;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 2),

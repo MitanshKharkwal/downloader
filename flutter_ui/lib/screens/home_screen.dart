@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../services/ipc_client.dart';
 import '../widgets/add_url_dialog.dart';
@@ -8,7 +9,6 @@ import '../models/download_task.dart';
 import '../theme/app_theme.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/sidebar.dart';
-import '../widgets/task_card.dart';
 import '../widgets/task_list.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -22,6 +22,7 @@ class _HomeScreenState extends State<HomeScreen> {
   final IpcClient _ipcClient = IpcClient();
   List<DownloadTask> _all = <DownloadTask>[];
   List<DownloadTask> _visible = <DownloadTask>[];
+  bool _isConnected = true;
   
   final TextEditingController _searchController = TextEditingController();
 
@@ -44,12 +45,19 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _fetchTasks() async {
-    final tasks = await _ipcClient.listTasks();
-    if (mounted) {
-      setState(() {
-        _all = tasks;
-        _visible = _filtered();
-      });
+    try {
+      final tasks = await _ipcClient.listTasks();
+      if (mounted) {
+        setState(() {
+          _isConnected = true;
+          _all = tasks;
+          _visible = _filtered();
+        });
+      }
+    } catch (e) {
+      if (mounted && _isConnected) {
+        setState(() => _isConnected = false);
+      }
     }
   }
 
@@ -79,14 +87,30 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _addTask() {
-    showDialog(
+    showGeneralDialog(
       context: context,
-      builder: (context) => AddUrlDialog(
-        onAdd: (url) async {
-          await _ipcClient.addUrl(url);
-          _fetchTasks();
-        },
-      ),
+      barrierDismissible: true,
+      barrierLabel: 'Dismiss',
+      barrierColor: Colors.black54,
+      transitionDuration: const Duration(milliseconds: 180),
+      pageBuilder: (BuildContext context, Animation<double> animation, Animation<double> secondaryAnimation) {
+        return AddUrlDialog(
+          onAdd: (String url) async {
+            await _ipcClient.addUrl(url);
+            _fetchTasks();
+          },
+        );
+      },
+      transitionBuilder: (BuildContext context, Animation<double> animation, Animation<double> secondaryAnimation, Widget child) {
+        final double curve = Curves.easeOutCubic.transform(animation.value);
+        return Opacity(
+          opacity: curve,
+          child: Transform.scale(
+            scale: 0.95 + (0.05 * curve),
+            child: child,
+          ),
+        );
+      },
     );
   }
 
@@ -127,22 +151,54 @@ class _HomeScreenState extends State<HomeScreen> {
           final bool collapsed = constraints.maxWidth < 900;
           final bool compact = constraints.maxWidth < 760;
 
-          return Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+          return Stack(
             children: <Widget>[
-              Sidebar(
-                selected: _selectedNav,
-                counts: _counts(),
-                collapsed: collapsed,
-                onSelect: (int index) {
-                  if (index == _selectedNav) return;
-                  _selectedNav = index;
-                  _resyncList();
-                },
-                onNewDownload: _addTask,
-                onSettings: _openSettings,
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: <Widget>[
+                  Sidebar(
+                    selected: _selectedNav,
+                    counts: _counts(),
+                    collapsed: collapsed,
+                    onSelect: (int index) {
+                      if (index == _selectedNav) return;
+                      _selectedNav = index;
+                      _resyncList();
+                    },
+                    onNewDownload: _addTask,
+                    onSettings: _openSettings,
+                  ),
+                  Expanded(child: _buildMain(compact)),
+                ],
               ),
-              Expanded(child: _buildMain(compact)),
+              AnimatedPositioned(
+                duration: AppTheme.medium,
+                curve: Curves.easeOutCubic,
+                top: _isConnected ? -60 : 0,
+                left: 0,
+                right: 0,
+                height: 48,
+                child: Container(
+                  alignment: Alignment.center,
+                  decoration: const BoxDecoration(
+                    color: AppColors.danger,
+                    boxShadow: <BoxShadow>[
+                      BoxShadow(color: Colors.black26, blurRadius: 8, offset: Offset(0, 4)),
+                    ],
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      Icon(PhosphorIcons.warningCircle(PhosphorIconsStyle.fill), color: Colors.white, size: 20),
+                      const SizedBox(width: 8),
+                      const Text(
+                        'Daemon disconnected. Retrying connection...',
+                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.w500, fontSize: 13),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             ],
           );
         },
@@ -173,13 +229,15 @@ class _HomeScreenState extends State<HomeScreen> {
         Expanded(
           child: _visible.isEmpty
               ? EmptyState(
-                  icon: _query.trim().isEmpty ? Icons.inbox_rounded : Icons.search_off_rounded,
-                  title: _query.trim().isEmpty ? 'No active downloads' : 'No matching downloads',
+                  title: _query.trim().isEmpty ? 'No active tasks' : 'No results found',
                   subtitle: _query.trim().isEmpty
-                      ? 'Click New Download to get started. Anything you queue will show up right here.'
-                      : 'Try a different search term or switch categories.',
-                  actionLabel: _query.trim().isEmpty ? 'New Download' : null,
+                      ? 'Click the button below or press Ctrl+N to add a new download.'
+                      : 'Try adjusting your search or filters.',
+                  icon: _query.trim().isEmpty
+                      ? PhosphorIcons.tray(PhosphorIconsStyle.light)
+                      : PhosphorIcons.magnifyingGlassMinus(PhosphorIconsStyle.light),
                   onAction: _query.trim().isEmpty ? _addTask : null,
+                  actionLabel: 'New Download',
                 )
               : TaskList(
                   tasks: _visible,
@@ -198,6 +256,14 @@ class _HomeScreenState extends State<HomeScreen> {
                   },
                   onCancel: (DownloadTask t) async {
                     await _ipcClient.cancelTask(t.id);
+                    _fetchTasks();
+                  },
+                  onRemove: (DownloadTask t) async {
+                    await _ipcClient.removeTask(t.id);
+                    _fetchTasks();
+                  },
+                  onPriority: (DownloadTask t, int p) async {
+                    await _ipcClient.setPriority(t.id, p);
                     _fetchTasks();
                   },
                 ),
@@ -264,14 +330,14 @@ class _Header extends StatelessWidget {
               controller: controller,
               onChanged: onQueryChanged,
               style: text.bodySmall?.copyWith(fontSize: 13),
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 hintText: 'Search downloads…',
                 prefixIcon: Icon(
-                  Icons.search_rounded,
-                  size: 17,
+                  PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.light),
+                  size: 16,
                   color: AppColors.textMuted,
                 ),
-                prefixIconConstraints: BoxConstraints(
+                prefixIconConstraints: const BoxConstraints(
                   minWidth: 36,
                   minHeight: 36,
                 ),
