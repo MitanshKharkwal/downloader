@@ -1,7 +1,9 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:phosphor_flutter/phosphor_flutter.dart';
+import 'package:flutter/services.dart';
+import 'package:phosphor_icons/phosphor_icons.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../services/ipc_client.dart';
 import '../widgets/add_url_dialog.dart';
@@ -35,6 +37,67 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
     _fetchTasks();
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) => _fetchTasks());
+    _checkFirstRun();
+  }
+
+  Future<void> _checkFirstRun() async {
+    final prefs = await SharedPreferences.getInstance();
+    final hasRun = prefs.getBool('hasRunBefore') ?? false;
+    if (!hasRun) {
+      await prefs.setBool('hasRunBefore', true);
+      if (mounted) {
+        _showNativeHostDialog();
+      }
+    }
+  }
+
+  void _showNativeHostDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: AppColors.surface,
+          title: const Text('Setup Browser Extension', style: TextStyle(color: AppColors.textPrimary)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'To capture downloads directly from Chrome, you need to register the native messaging host. Install the extension in Chrome, copy its ID, and run the following command in your terminal:',
+                style: TextStyle(color: AppColors.textSecondary),
+              ),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppColors.background,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const SelectableText(
+                  'cd native_host && python register_native_host.py --extension-id <YOUR_EXTENSION_ID>',
+                  style: TextStyle(color: AppColors.textPrimary, fontFamily: 'monospace'),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Clipboard.setData(const ClipboardData(text: 'cd native_host && python register_native_host.py --extension-id '));
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Command copied!')));
+              },
+              child: const Text('Copy Command', style: TextStyle(color: AppColors.accent)),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: AppColors.accent),
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Got it', style: TextStyle(color: AppColors.textPrimary)),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   @override

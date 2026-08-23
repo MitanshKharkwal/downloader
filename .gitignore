@@ -22,3 +22,8 @@ resume_out/
 queue_out/
 test_*_dir/
 smoke_out/
+
+# Packaging
+packaging/dist/
+packaging/build/
+flutter_ui/build/
