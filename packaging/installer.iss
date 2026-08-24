@@ -8,9 +8,8 @@ OutputBaseFilename=DownloaderSetup
 
 [Files]
 Source: "..\packaging\dist\downloader-daemon.exe"; DestDir: "{app}"
-Source: "..\flutter_ui\build\windows\x64\runner\Release\*"; DestDir: "{app}"; Flags: recursesubdirs
-Source: "..\native_host\host.py"; DestDir: "{app}\native_host"
-Source: "..\native_host\register_native_host.py"; DestDir: "{app}\native_host"
+Source: "..\packaging\dist\downloader-native-host.exe"; DestDir: "{app}\native_host"
+Source: "..\packaging\dist\register-native-host.exe"; DestDir: "{app}\native_host"
 
 [Icons]
 Name: "{group}\Downloader"; Filename: "{app}\flutter_ui.exe"

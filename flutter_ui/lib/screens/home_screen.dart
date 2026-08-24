@@ -75,7 +75,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: const SelectableText(
-                  'cd native_host && python register_native_host.py --extension-id <YOUR_EXTENSION_ID>',
+                  'cd native_host && .\\register-native-host.exe --extension-id <YOUR_EXTENSION_ID>',
                   style: TextStyle(color: AppColors.textPrimary, fontFamily: 'monospace'),
                 ),
               ),
@@ -84,7 +84,7 @@ class _HomeScreenState extends State<HomeScreen> {
           actions: [
             TextButton(
               onPressed: () {
-                Clipboard.setData(const ClipboardData(text: 'cd native_host && python register_native_host.py --extension-id '));
+                Clipboard.setData(const ClipboardData(text: 'cd native_host && .\\register-native-host.exe --extension-id '));
                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Command copied!')));
               },
               child: const Text('Copy Command', style: TextStyle(color: AppColors.accent)),

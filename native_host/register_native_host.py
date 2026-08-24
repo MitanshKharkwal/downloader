@@ -49,11 +49,11 @@ def write_wrapper_bat() -> str:
     return bat_path
 
 
-def write_manifest(bat_path: str, extension_id: str) -> str:
+def write_manifest(executable_path: str, extension_id: str) -> str:
     manifest = {
         "name": HOST_NAME,
         "description": "Native messaging host for the Download Manager browser extension",
-        "path": bat_path,
+        "path": executable_path,
         "type": "stdio",
         "allowed_origins": [f"chrome-extension://{extension_id}/"],
     }
@@ -101,10 +101,19 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    bat_path = write_wrapper_bat()
-    manifest_path = write_manifest(bat_path, args.extension_id)
+    # If the frozen executable exists, point the manifest directly to it (packaged mode)
+    frozen_exe = os.path.join(THIS_DIR, "downloader-native-host.exe")
+    if os.path.exists(frozen_exe):
+        print(f"Detected packaged environment. Using frozen exe: {frozen_exe}")
+        target_path = frozen_exe
+    else:
+        # Fallback for dev mode
+        print("Detected source environment. Generating .bat wrapper for Python execution.")
+        target_path = write_wrapper_bat()
+
+    manifest_path = write_manifest(target_path, args.extension_id)
     register_in_registry(manifest_path)
-    print(f"\nWrapper: {bat_path}\nManifest: {manifest_path}")
+    print(f"\nHost Executable: {target_path}\nManifest: {manifest_path}")
 
 
 if __name__ == "__main__":
