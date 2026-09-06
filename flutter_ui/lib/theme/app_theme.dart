@@ -116,7 +116,10 @@ class AppTheme {
         filled: true,
         fillColor: AppColors.surface,
         isDense: true,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 12,
+          vertical: 12,
+        ),
         hintStyle: text.bodySmall?.copyWith(color: AppColors.textMuted),
         border: OutlineInputBorder(
           borderRadius: AppRadius.md,

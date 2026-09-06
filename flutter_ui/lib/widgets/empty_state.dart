@@ -30,10 +30,7 @@ class EmptyState extends StatelessWidget {
       builder: (BuildContext context, double val, Widget? child) {
         return Opacity(
           opacity: val,
-          child: Transform.scale(
-            scale: 0.97 + (0.03 * val),
-            child: child,
-          ),
+          child: Transform.scale(scale: 0.97 + (0.03 * val), child: child),
         );
       },
       child: Center(
@@ -50,7 +47,11 @@ class EmptyState extends StatelessWidget {
                   borderRadius: AppRadius.lg,
                   border: Border.all(color: AppColors.border),
                 ),
-                child: Icon(icon ?? PhosphorIcons.tray(PhosphorIconsStyle.light), size: 40, color: AppColors.textMuted),
+                child: Icon(
+                  icon ?? PhosphorIcons.tray(PhosphorIconsStyle.light),
+                  size: 40,
+                  color: AppColors.textMuted,
+                ),
               ),
               const SizedBox(height: 22),
               Text(
@@ -125,9 +126,9 @@ class _GhostButtonState extends State<_GhostButton> {
               Text(
                 widget.label,
                 style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                      fontWeight: FontWeight.w600,
-                      color: _hovered ? Colors.white : AppColors.textPrimary,
-                    ),
+                  fontWeight: FontWeight.w600,
+                  color: _hovered ? Colors.white : AppColors.textPrimary,
+                ),
               ),
             ],
           ),

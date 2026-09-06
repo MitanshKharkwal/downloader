@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:phosphor_icons/phosphor_icons.dart';
 
 import 'speed_sparkline.dart';
@@ -34,7 +34,8 @@ class TaskCard extends StatefulWidget {
   State<TaskCard> createState() => _TaskCardState();
 }
 
-class _TaskCardState extends State<TaskCard> with SingleTickerProviderStateMixin {
+class _TaskCardState extends State<TaskCard>
+    with SingleTickerProviderStateMixin {
   bool _hovered = false;
   late final AnimationController _pulseController;
 
@@ -106,7 +107,8 @@ class _TaskCardState extends State<TaskCard> with SingleTickerProviderStateMixin
     final DownloadTask task = widget.task;
     final TextTheme text = Theme.of(context).textTheme;
     final TaskStatus status = _displayStatus;
-    final bool dimmed = status == TaskStatus.paused || status == TaskStatus.queued;
+    final bool dimmed =
+        status == TaskStatus.paused || status == TaskStatus.queued;
     final bool isError = status == TaskStatus.error;
     final bool isDone = status == TaskStatus.completed;
 
@@ -121,15 +123,15 @@ class _TaskCardState extends State<TaskCard> with SingleTickerProviderStateMixin
           color: isError
               ? Color.alphaBlend(AppColors.dangerSoft, AppColors.surface)
               : _hovered
-                  ? AppColors.surfaceHover
-                  : AppColors.surface,
+              ? AppColors.surfaceHover
+              : AppColors.surface,
           borderRadius: AppRadius.md,
           border: Border.all(
             color: isError
                 ? AppColors.danger.withValues(alpha: 0.45)
                 : _hovered
-                    ? AppColors.borderStrong
-                    : AppColors.border,
+                ? AppColors.borderStrong
+                : AppColors.border,
           ),
         ),
         child: AnimatedOpacity(
@@ -137,115 +139,128 @@ class _TaskCardState extends State<TaskCard> with SingleTickerProviderStateMixin
           opacity: dimmed ? 0.55 : 1,
           child: ScaleTransition(
             scale: Tween<double>(begin: 1.0, end: 1.04).animate(
-              CurvedAnimation(parent: _pulseController, curve: Curves.easeOutCubic),
+              CurvedAnimation(
+                parent: _pulseController,
+                curve: Curves.easeOutCubic,
+              ),
             ),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: <Widget>[
                 _FileIcon(task: task, displayStatus: status),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: <Widget>[
-                    Row(
-                      children: <Widget>[
-                        Flexible(
-                          child: Text(
-                            task.title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: text.bodyMedium?.copyWith(
-                              fontSize: 13.5,
-                              fontWeight: FontWeight.w600,
-                              color: AppColors.textPrimary,
-                            ),
-                          ),
-                        ),
-                        if (isDone) ...<Widget>[
-                          const SizedBox(width: 8),
-                          Icon(
-                            PhosphorIcons.checkCircle(PhosphorIconsStyle.fill),
-                            size: 15,
-                            color: AppColors.success,
-                          ),
-                        ],
-                      ],
-                    ),
-                    const SizedBox(height: 7),
-                    if (isDone)
-                      Text(
-                        '${task.sizeLabel} · Completed',
-                        style: text.labelSmall?.copyWith(
-                          color: AppColors.textMuted,
-                          fontSize: 11,
-                        ),
-                      )
-                    else if (isError)
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
                       Row(
                         children: <Widget>[
-                          Expanded(
+                          Flexible(
                             child: Text(
-                              task.errorMessage ?? 'Download failed',
+                              task.title,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: text.labelSmall?.copyWith(
-                                color: AppColors.danger,
-                                fontSize: 11,
+                              style: text.bodyMedium?.copyWith(
+                                fontSize: 13.5,
+                                fontWeight: FontWeight.w600,
+                                color: AppColors.textPrimary,
                               ),
                             ),
                           ),
-                        ],
-                      )
-                    else
-                      Row(
-                        children: <Widget>[
-                          const Spacer(),
-                          const SizedBox(width: 10),
-                          SizedBox(
-                            width: 34,
-                            child: TweenAnimationBuilder<double>(
-                              tween: Tween<double>(begin: task.progress, end: task.progress),
-                              duration: const Duration(milliseconds: 750),
-                              curve: Curves.easeOut,
-                              builder: (BuildContext context, double val, Widget? child) {
-                                return Text(
-                                  '${(val * 100).round()}%',
-                                  textAlign: TextAlign.right,
-                                  style: text.labelSmall?.copyWith(
-                                    color: AppColors.textMuted,
-                                    fontSize: 11,
-                                    fontFeatures: const <FontFeature>[
-                                      FontFeature.tabularFigures(),
-                                    ],
-                                  ),
-                                );
-                              },
+                          if (isDone) ...<Widget>[
+                            const SizedBox(width: 8),
+                            Icon(
+                              PhosphorIcons.checkCircle(
+                                PhosphorIconsStyle.fill,
+                              ),
+                              size: 15,
+                              color: AppColors.success,
                             ),
-                          ),
+                          ],
                         ],
                       ),
-                  ],
+                      const SizedBox(height: 7),
+                      if (isDone)
+                        Text(
+                          '${task.sizeLabel} · Completed',
+                          style: text.labelSmall?.copyWith(
+                            color: AppColors.textMuted,
+                            fontSize: 11,
+                          ),
+                        )
+                      else if (isError)
+                        Row(
+                          children: <Widget>[
+                            Expanded(
+                              child: Text(
+                                task.errorMessage ?? 'Download failed',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: text.labelSmall?.copyWith(
+                                  color: AppColors.danger,
+                                  fontSize: 11,
+                                ),
+                              ),
+                            ),
+                          ],
+                        )
+                      else
+                        Row(
+                          children: <Widget>[
+                            const Spacer(),
+                            const SizedBox(width: 10),
+                            SizedBox(
+                              width: 34,
+                              child: TweenAnimationBuilder<double>(
+                                tween: Tween<double>(
+                                  begin: task.progress,
+                                  end: task.progress,
+                                ),
+                                duration: const Duration(milliseconds: 750),
+                                curve: Curves.easeOut,
+                                builder:
+                                    (
+                                      BuildContext context,
+                                      double val,
+                                      Widget? child,
+                                    ) {
+                                      return Text(
+                                        '${(val * 100).round()}%',
+                                        textAlign: TextAlign.right,
+                                        style: text.labelSmall?.copyWith(
+                                          color: AppColors.textMuted,
+                                          fontSize: 11,
+                                          fontFeatures: const <FontFeature>[
+                                            FontFeature.tabularFigures(),
+                                          ],
+                                        ),
+                                      );
+                                    },
+                              ),
+                            ),
+                          ],
+                        ),
+                    ],
+                  ),
                 ),
-              ),
-              const SizedBox(width: 16),
-              _Stats(task: task, compact: widget.compact),
-              const SizedBox(width: 8),
-              ActionsWidget(
-                task: task,
-                displayStatus: status,
-                visible: _hovered,
-                onPause: _handlePause,
-                onResume: _handleResume,
-                onRetry: widget.onRetry,
-                onCancel: widget.onCancel,
-                onRemove: widget.onRemove,
-                onPriority: widget.onPriority,
-              ),
-            ],
+                const SizedBox(width: 16),
+                _Stats(task: task, compact: widget.compact),
+                const SizedBox(width: 8),
+                ActionsWidget(
+                  task: task,
+                  displayStatus: status,
+                  visible: _hovered,
+                  onPause: _handlePause,
+                  onResume: _handleResume,
+                  onRetry: widget.onRetry,
+                  onCancel: widget.onCancel,
+                  onRemove: widget.onRemove,
+                  onPriority: widget.onPriority,
+                ),
+              ],
+            ),
           ),
-        ),
         ),
       ),
     );
@@ -263,8 +278,8 @@ class _FileIcon extends StatelessWidget {
     final Color tint = displayStatus == TaskStatus.error
         ? AppColors.danger
         : displayStatus == TaskStatus.completed
-            ? AppColors.success
-            : AppColors.accent;
+        ? AppColors.success
+        : AppColors.accent;
 
     final bool isPaused = displayStatus == TaskStatus.paused;
 
@@ -312,14 +327,18 @@ class _FileIcon extends StatelessWidget {
                 ),
               );
             },
-            child: Icon(task.category.icon, key: ValueKey<TaskStatus>(displayStatus), size: 18, color: tint),
+            child: Icon(
+              task.category.icon,
+              key: ValueKey<TaskStatus>(displayStatus),
+              size: 18,
+              color: tint,
+            ),
           ),
         ),
       ],
     );
   }
 }
-
 
 class _Stats extends StatelessWidget {
   const _Stats({required this.task, required this.compact});
@@ -332,10 +351,10 @@ class _Stats extends StatelessWidget {
     final TextTheme text = Theme.of(context).textTheme;
 
     TextStyle? style(Color color) => text.labelSmall?.copyWith(
-          color: color,
-          fontSize: 11.5,
-          fontFeatures: const <FontFeature>[FontFeature.tabularFigures()],
-        );
+      color: color,
+      fontSize: 11.5,
+      fontFeatures: const <FontFeature>[FontFeature.tabularFigures()],
+    );
 
     return Row(
       children: <Widget>[
@@ -349,7 +368,10 @@ class _Stats extends StatelessWidget {
         ),
         if (!compact) ...<Widget>[
           if (task.status.isActive) ...<Widget>[
-            SpeedSparkline(speedBytesPerSec: task.speedBytesPerSec, active: task.status.isActive),
+            SpeedSparkline(
+              speedBytesPerSec: task.speedBytesPerSec,
+              active: task.status.isActive,
+            ),
             const SizedBox(width: 8),
           ],
           SizedBox(
@@ -404,24 +426,20 @@ class _CancelConfirmRow extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 6),
-        _SmallButton(
-          label: 'Yes',
-          color: AppColors.danger,
-          onTap: onConfirm,
-        ),
+        _SmallButton(label: 'Yes', color: AppColors.danger, onTap: onConfirm),
         const SizedBox(width: 4),
-        _SmallButton(
-          label: 'No',
-          color: AppColors.textMuted,
-          onTap: onDismiss,
-        ),
+        _SmallButton(label: 'No', color: AppColors.textMuted, onTap: onDismiss),
       ],
     );
   }
 }
 
 class _SmallButton extends StatefulWidget {
-  const _SmallButton({required this.label, required this.color, required this.onTap});
+  const _SmallButton({
+    required this.label,
+    required this.color,
+    required this.onTap,
+  });
   final String label;
   final Color color;
   final VoidCallback onTap;
@@ -445,9 +463,13 @@ class _SmallButtonState extends State<_SmallButton> {
           duration: AppTheme.fast,
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
           decoration: BoxDecoration(
-            color: _hovered ? widget.color.withValues(alpha: 0.2) : Colors.transparent,
+            color: _hovered
+                ? widget.color.withValues(alpha: 0.2)
+                : Colors.transparent,
             borderRadius: AppRadius.sm,
-            border: Border.all(color: widget.color.withValues(alpha: _hovered ? 0.6 : 0.35)),
+            border: Border.all(
+              color: widget.color.withValues(alpha: _hovered ? 0.6 : 0.35),
+            ),
           ),
           child: Text(
             widget.label,
@@ -465,7 +487,8 @@ class _SmallButtonState extends State<_SmallButton> {
 
 @visibleForTesting
 class ActionsWidget extends StatefulWidget {
-  const ActionsWidget({super.key,
+  const ActionsWidget({
+    super.key,
     required this.task,
     required this.displayStatus,
     required this.visible,
@@ -511,12 +534,12 @@ class _ActionsState extends State<ActionsWidget> {
     // Inline cancel-confirm overlay
     if (_confirmingCancel) {
       return _CancelConfirmRow(
-          onConfirm: () {
-            setState(() => _confirmingCancel = false);
-            widget.onCancel();
-          },
-          onDismiss: () => setState(() => _confirmingCancel = false),
-        );
+        onConfirm: () {
+          setState(() => _confirmingCancel = false);
+          widget.onCancel();
+        },
+        onDismiss: () => setState(() => _confirmingCancel = false),
+      );
     }
 
     final List<Widget> buttons = <Widget>[];
@@ -566,8 +589,10 @@ class _ActionsState extends State<ActionsWidget> {
 
     if (status == TaskStatus.queued || status == TaskStatus.downloading) {
       IconData pIcon = PhosphorIcons.arrowsDownUp(PhosphorIconsStyle.light);
-      if (widget.task.priority == 2) pIcon = PhosphorIcons.caretDoubleUp(PhosphorIconsStyle.light);
-      if (widget.task.priority == 0) pIcon = PhosphorIcons.caretDoubleDown(PhosphorIconsStyle.light);
+      if (widget.task.priority == 2)
+        pIcon = PhosphorIcons.caretDoubleUp(PhosphorIconsStyle.light);
+      if (widget.task.priority == 0)
+        pIcon = PhosphorIcons.caretDoubleDown(PhosphorIconsStyle.light);
 
       buttons.add(
         PopupMenuButton<int>(
@@ -575,24 +600,11 @@ class _ActionsState extends State<ActionsWidget> {
           tooltip: 'Set Priority',
           onSelected: widget.onPriority,
           offset: const Offset(0, 32),
-          child: _IconAction(
-            icon: pIcon,
-            tip: 'Priority',
-            onTap: () {},
-          ),
+          child: _IconAction(icon: pIcon, tip: 'Priority', onTap: () {}),
           itemBuilder: (BuildContext context) => <PopupMenuEntry<int>>[
-            const PopupMenuItem<int>(
-              value: 2,
-              child: Text('High Priority'),
-            ),
-            const PopupMenuItem<int>(
-              value: 1,
-              child: Text('Normal Priority'),
-            ),
-            const PopupMenuItem<int>(
-              value: 0,
-              child: Text('Low Priority'),
-            ),
+            const PopupMenuItem<int>(value: 2, child: Text('High Priority')),
+            const PopupMenuItem<int>(value: 1, child: Text('Normal Priority')),
+            const PopupMenuItem<int>(value: 0, child: Text('Low Priority')),
           ],
         ),
       );
@@ -653,7 +665,8 @@ class _IconActionState extends State<_IconAction> {
 
   @override
   Widget build(BuildContext context) {
-    final Color fg = widget.color ??
+    final Color fg =
+        widget.color ??
         (_hovered ? AppColors.textPrimary : AppColors.textSecondary);
 
     return Padding(
@@ -678,10 +691,14 @@ class _IconActionState extends State<_IconAction> {
                 height: 28,
                 width: 28,
                 decoration: BoxDecoration(
-                  color: _hovered ? AppColors.surfaceActive : Colors.transparent,
+                  color: _hovered
+                      ? AppColors.surfaceActive
+                      : Colors.transparent,
                   borderRadius: AppRadius.sm,
                   border: Border.all(
-                    color: _hovered ? AppColors.borderStrong : Colors.transparent,
+                    color: _hovered
+                        ? AppColors.borderStrong
+                        : Colors.transparent,
                   ),
                 ),
                 child: Icon(widget.icon, size: 15, color: fg),
@@ -709,7 +726,8 @@ class _PlayPauseAction extends StatefulWidget {
   State<_PlayPauseAction> createState() => _PlayPauseActionState();
 }
 
-class _PlayPauseActionState extends State<_PlayPauseAction> with SingleTickerProviderStateMixin {
+class _PlayPauseActionState extends State<_PlayPauseAction>
+    with SingleTickerProviderStateMixin {
   bool _hovered = false;
   bool _pressed = false;
   late final AnimationController _controller;
@@ -769,10 +787,14 @@ class _PlayPauseActionState extends State<_PlayPauseAction> with SingleTickerPro
                 height: 28,
                 width: 28,
                 decoration: BoxDecoration(
-                  color: _hovered ? AppColors.surfaceActive : Colors.transparent,
+                  color: _hovered
+                      ? AppColors.surfaceActive
+                      : Colors.transparent,
                   borderRadius: AppRadius.sm,
                   border: Border.all(
-                    color: _hovered ? AppColors.borderStrong : Colors.transparent,
+                    color: _hovered
+                        ? AppColors.borderStrong
+                        : Colors.transparent,
                   ),
                 ),
                 child: AnimatedIcon(
@@ -789,9 +811,3 @@ class _PlayPauseActionState extends State<_PlayPauseAction> with SingleTickerPro
     );
   }
 }
-
-
-
-
-
-

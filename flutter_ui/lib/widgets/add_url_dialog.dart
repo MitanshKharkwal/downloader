@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 
 class AddUrlDialog extends StatefulWidget {
@@ -20,7 +20,8 @@ class _AddUrlDialogState extends State<AddUrlDialog> {
     final trimmed = text.trim();
     if (trimmed.isEmpty) return false;
     if (trimmed.startsWith('magnet:?')) return true;
-    if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) return true;
+    if (trimmed.startsWith('http://') || trimmed.startsWith('https://'))
+      return true;
     return false;
   }
 
@@ -85,19 +86,25 @@ class _AddUrlDialogState extends State<AddUrlDialog> {
                 border: OutlineInputBorder(
                   borderRadius: AppRadius.md,
                   borderSide: BorderSide(
-                    color: _errorMessage != null ? AppColors.danger : AppColors.border,
+                    color: _errorMessage != null
+                        ? AppColors.danger
+                        : AppColors.border,
                   ),
                 ),
                 enabledBorder: OutlineInputBorder(
                   borderRadius: AppRadius.md,
                   borderSide: BorderSide(
-                    color: _errorMessage != null ? AppColors.danger : AppColors.border,
+                    color: _errorMessage != null
+                        ? AppColors.danger
+                        : AppColors.border,
                   ),
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: AppRadius.md,
                   borderSide: BorderSide(
-                    color: _errorMessage != null ? AppColors.danger : AppColors.accent,
+                    color: _errorMessage != null
+                        ? AppColors.danger
+                        : AppColors.accent,
                     width: 1.5,
                   ),
                 ),
@@ -121,16 +128,25 @@ class _AddUrlDialogState extends State<AddUrlDialog> {
                   ? Padding(
                       padding: const EdgeInsets.only(top: 10),
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 8,
+                        ),
                         decoration: BoxDecoration(
                           color: AppColors.dangerSoft,
                           borderRadius: AppRadius.sm,
-                          border: Border.all(color: AppColors.danger.withValues(alpha: 0.3)),
+                          border: Border.all(
+                            color: AppColors.danger.withValues(alpha: 0.3),
+                          ),
                         ),
                         child: Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Icon(Icons.error_outline, size: 14, color: AppColors.danger),
+                            const Icon(
+                              Icons.error_outline,
+                              size: 14,
+                              color: AppColors.danger,
+                            ),
                             const SizedBox(width: 6),
                             Expanded(
                               child: Text(
@@ -190,14 +206,18 @@ class _AddUrlDialogState extends State<AddUrlDialog> {
                   width: 100,
                   child: ElevatedButton(
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: _isButtonEnabled ? AppColors.accent : AppColors.surfaceActive,
+                      backgroundColor: _isButtonEnabled
+                          ? AppColors.accent
+                          : AppColors.surfaceActive,
                       shape: RoundedRectangleBorder(borderRadius: AppRadius.md),
                     ),
                     onPressed: _isButtonEnabled ? _submit : null,
                     child: Text(
                       'Add Task',
                       style: TextStyle(
-                        color: _isButtonEnabled ? AppColors.textPrimary : AppColors.textMuted,
+                        color: _isButtonEnabled
+                            ? AppColors.textPrimary
+                            : AppColors.textMuted,
                         fontWeight: FontWeight.w600,
                         fontSize: 13,
                       ),

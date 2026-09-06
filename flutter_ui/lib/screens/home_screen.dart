@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -25,7 +25,7 @@ class _HomeScreenState extends State<HomeScreen> {
   List<DownloadTask> _all = <DownloadTask>[];
   List<DownloadTask> _visible = <DownloadTask>[];
   bool _isConnected = true;
-  
+
   final TextEditingController _searchController = TextEditingController();
 
   int _selectedNav = 0;
@@ -58,7 +58,10 @@ class _HomeScreenState extends State<HomeScreen> {
       builder: (context) {
         return AlertDialog(
           backgroundColor: AppColors.surface,
-          title: const Text('Setup Browser Extension', style: TextStyle(color: AppColors.textPrimary)),
+          title: const Text(
+            'Setup Browser Extension',
+            style: TextStyle(color: AppColors.textPrimary),
+          ),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -76,7 +79,10 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
                 child: const SelectableText(
                   'cd native_host && .\\register-native-host.exe --extension-id <YOUR_EXTENSION_ID>',
-                  style: TextStyle(color: AppColors.textPrimary, fontFamily: 'monospace'),
+                  style: TextStyle(
+                    color: AppColors.textPrimary,
+                    fontFamily: 'monospace',
+                  ),
                 ),
               ),
             ],
@@ -84,15 +90,30 @@ class _HomeScreenState extends State<HomeScreen> {
           actions: [
             TextButton(
               onPressed: () {
-                Clipboard.setData(const ClipboardData(text: 'cd native_host && .\\register-native-host.exe --extension-id '));
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Command copied!')));
+                Clipboard.setData(
+                  const ClipboardData(
+                    text:
+                        'cd native_host && .\\register-native-host.exe --extension-id ',
+                  ),
+                );
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Command copied!')),
+                );
               },
-              child: const Text('Copy Command', style: TextStyle(color: AppColors.accent)),
+              child: const Text(
+                'Copy Command',
+                style: TextStyle(color: AppColors.accent),
+              ),
             ),
             ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: AppColors.accent),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.accent,
+              ),
               onPressed: () => Navigator.pop(context),
-              child: const Text('Got it', style: TextStyle(color: AppColors.textPrimary)),
+              child: const Text(
+                'Got it',
+                style: TextStyle(color: AppColors.textPrimary),
+              ),
             ),
           ],
         );
@@ -156,25 +177,36 @@ class _HomeScreenState extends State<HomeScreen> {
       barrierLabel: 'Dismiss',
       barrierColor: Colors.black54,
       transitionDuration: const Duration(milliseconds: 180),
-      pageBuilder: (BuildContext context, Animation<double> animation, Animation<double> secondaryAnimation) {
-        return AddUrlDialog(
-          onAdd: (String url) async {
-            // onAdd is now async — throws on error so dialog can show it inline
-            await _ipcClient.addUrl(url);
-            await _fetchTasks();
+      pageBuilder:
+          (
+            BuildContext context,
+            Animation<double> animation,
+            Animation<double> secondaryAnimation,
+          ) {
+            return AddUrlDialog(
+              onAdd: (String url) async {
+                // onAdd is now async — throws on error so dialog can show it inline
+                await _ipcClient.addUrl(url);
+                await _fetchTasks();
+              },
+            );
           },
-        );
-      },
-      transitionBuilder: (BuildContext context, Animation<double> animation, Animation<double> secondaryAnimation, Widget child) {
-        final double curve = Curves.easeOutCubic.transform(animation.value);
-        return Opacity(
-          opacity: curve,
-          child: Transform.scale(
-            scale: 0.95 + (0.05 * curve),
-            child: child,
-          ),
-        );
-      },
+      transitionBuilder:
+          (
+            BuildContext context,
+            Animation<double> animation,
+            Animation<double> secondaryAnimation,
+            Widget child,
+          ) {
+            final double curve = Curves.easeOutCubic.transform(animation.value);
+            return Opacity(
+              opacity: curve,
+              child: Transform.scale(
+                scale: 0.95 + (0.05 * curve),
+                child: child,
+              ),
+            );
+          },
     );
   }
 
@@ -198,7 +230,10 @@ class _HomeScreenState extends State<HomeScreen> {
               const SizedBox(height: 8),
               Text(
                 'Download location, bandwidth limits and connection settings would live here.',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.textMuted, height: 1.5),
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: AppColors.textMuted,
+                  height: 1.5,
+                ),
               ),
             ],
           ),
@@ -253,17 +288,31 @@ class _HomeScreenState extends State<HomeScreen> {
                       decoration: const BoxDecoration(
                         color: AppColors.danger,
                         boxShadow: <BoxShadow>[
-                          BoxShadow(color: Colors.black26, blurRadius: 8, offset: Offset(0, 4)),
+                          BoxShadow(
+                            color: Colors.black26,
+                            blurRadius: 8,
+                            offset: Offset(0, 4),
+                          ),
                         ],
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: <Widget>[
-                          Icon(PhosphorIcons.warningCircle(PhosphorIconsStyle.fill), color: Colors.white, size: 20),
+                          Icon(
+                            PhosphorIcons.warningCircle(
+                              PhosphorIconsStyle.fill,
+                            ),
+                            color: Colors.white,
+                            size: 20,
+                          ),
                           const SizedBox(width: 8),
                           const Text(
                             'Daemon disconnected. Retrying connection...',
-                            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w500, fontSize: 13),
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w500,
+                              fontSize: 13,
+                            ),
                           ),
                         ],
                       ),
@@ -280,7 +329,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildMain(bool compact) {
     final NavItem item = kNavItems[_selectedNav];
-    final int activeCount = _visible.where((DownloadTask t) => t.status == TaskStatus.downloading).length;
+    final int activeCount = _visible
+        .where((DownloadTask t) => t.status == TaskStatus.downloading)
+        .length;
 
     // Determine empty state context: is it a category filter with 0 results?
     final bool isCategoryFilter = kNavItems[_selectedNav].category != null;

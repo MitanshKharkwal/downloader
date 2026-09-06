@@ -14,7 +14,10 @@ class NavItem {
 }
 
 final List<NavItem> kNavItems = <NavItem>[
-  NavItem(label: 'All Downloads', icon: PhosphorIcons.download(PhosphorIconsStyle.light)),
+  NavItem(
+    label: 'All Downloads',
+    icon: PhosphorIcons.download(PhosphorIconsStyle.light),
+  ),
   NavItem(
     label: 'Video',
     icon: PhosphorIcons.videoCamera(PhosphorIconsStyle.light),
@@ -97,10 +100,10 @@ class Sidebar extends StatelessWidget {
               child: Text(
                 'LIBRARY',
                 style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      color: AppColors.textMuted,
-                      fontSize: 10,
-                      letterSpacing: 1.1,
-                    ),
+                  color: AppColors.textMuted,
+                  fontSize: 10,
+                  letterSpacing: 1.1,
+                ),
               ),
             ),
           Expanded(
@@ -123,7 +126,9 @@ class Sidebar extends StatelessWidget {
                     ),
                   ),
                   Column(
-                    children: List<Widget>.generate(kNavItems.length, (int index) {
+                    children: List<Widget>.generate(kNavItems.length, (
+                      int index,
+                    ) {
                       return _SidebarTile(
                         item: kNavItems[index],
                         selected: index == selected,
@@ -192,9 +197,9 @@ class _Brand extends StatelessWidget {
             Text(
               'Fetchly',
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontSize: 15,
-                    color: AppColors.textPrimary,
-                  ),
+                fontSize: 15,
+                color: AppColors.textPrimary,
+              ),
             ),
           ],
         ],
@@ -235,7 +240,11 @@ class _NewDownloadButtonState extends State<_NewDownloadButton> {
               borderRadius: AppRadius.md,
             ),
             child: widget.collapsed
-                ? Icon(PhosphorIcons.plus(PhosphorIconsStyle.light), size: 18, color: Colors.white)
+                ? Icon(
+                    PhosphorIcons.plus(PhosphorIconsStyle.light),
+                    size: 18,
+                    color: Colors.white,
+                  )
                 : Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: <Widget>[
@@ -247,12 +256,11 @@ class _NewDownloadButtonState extends State<_NewDownloadButton> {
                       const SizedBox(width: 7),
                       Text(
                         'New Download',
-                        style:
-                            Theme.of(context).textTheme.labelLarge?.copyWith(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 13,
-                                ),
+                        style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 13,
+                        ),
                       ),
                     ],
                   ),
@@ -291,8 +299,8 @@ class _SidebarTileState extends State<_SidebarTile> {
     final Color fg = widget.selected
         ? AppColors.textPrimary
         : _hovered
-            ? AppColors.textSecondary
-            : AppColors.textMuted;
+        ? AppColors.textSecondary
+        : AppColors.textMuted;
     final Color bg = _hovered && !widget.selected
         ? AppColors.surface
         : Colors.transparent;
@@ -310,9 +318,12 @@ class _SidebarTileState extends State<_SidebarTile> {
             child: AnimatedContainer(
               duration: AppTheme.fast,
               height: 36,
-              padding: EdgeInsets.symmetric(horizontal: widget.collapsed ? 0 : 10),
-              alignment:
-                  widget.collapsed ? Alignment.center : Alignment.centerLeft,
+              padding: EdgeInsets.symmetric(
+                horizontal: widget.collapsed ? 0 : 10,
+              ),
+              alignment: widget.collapsed
+                  ? Alignment.center
+                  : Alignment.centerLeft,
               decoration: BoxDecoration(color: bg, borderRadius: AppRadius.sm),
               child: widget.collapsed
                   ? Icon(widget.item.icon, size: 18, color: fg)

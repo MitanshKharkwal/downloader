@@ -1,9 +1,17 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:phosphor_icons/phosphor_icons.dart';
 
 import '../theme/app_theme.dart';
 
-enum TaskCategory { video, music, programs, documents, compressed, photos, other }
+enum TaskCategory {
+  video,
+  music,
+  programs,
+  documents,
+  compressed,
+  photos,
+  other,
+}
 
 extension TaskCategoryX on TaskCategory {
   String get label {
@@ -141,7 +149,10 @@ class DownloadTask {
 
     return DownloadTask(
       id: json['id'] ?? '',
-      title: _extractFilename(json['file_path']) ?? json['source'] ?? 'Unknown Source',
+      title:
+          _extractFilename(json['file_path']) ??
+          json['source'] ??
+          'Unknown Source',
       category: category,
       sizeBytes: totalBytes,
       progress: progress,
@@ -158,7 +169,6 @@ class DownloadTask {
     if (segments.isEmpty) return null;
     return segments.last;
   }
-
 
   final String id;
   final String title;
@@ -206,8 +216,9 @@ class DownloadTask {
       value /= 1024;
       unit++;
     }
-    final String formatted =
-        value >= 100 ? value.toStringAsFixed(0) : value.toStringAsFixed(1);
+    final String formatted = value >= 100
+        ? value.toStringAsFixed(0)
+        : value.toStringAsFixed(1);
     return '$formatted ${units[unit]}';
   }
 
@@ -224,5 +235,3 @@ class DownloadTask {
     return restMinutes == 0 ? '${hours}h' : '${hours}h ${restMinutes}m';
   }
 }
-
-

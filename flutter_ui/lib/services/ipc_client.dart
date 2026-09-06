@@ -1,4 +1,4 @@
-﻿import 'package:flutter/foundation.dart';
+import 'package:flutter/foundation.dart';
 import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
@@ -11,30 +11,28 @@ class IpcClient {
 
   Future<void> _loadToken() async {
     if (_token != null) return;
-    
-    final homeDir = Platform.environment['USERPROFILE'] ?? Platform.environment['HOME'];
+
+    final homeDir =
+        Platform.environment['USERPROFILE'] ?? Platform.environment['HOME'];
     if (homeDir == null) return;
-    
+
     final tokenFile = File('$homeDir/.download_manager/ipc_token.txt');
     if (await tokenFile.exists()) {
       _token = (await tokenFile.readAsString()).trim();
     }
   }
 
-  Future<dynamic> _callMethod(String method, [Map<String, dynamic>? args]) async {
+  Future<dynamic> _callMethod(
+    String method, [
+    Map<String, dynamic>? args,
+  ]) async {
     await _loadToken();
     if (_token == null) throw Exception("IPC Token not found");
 
     final response = await http.post(
       Uri.parse(_url),
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Auth-Token': _token!,
-      },
-      body: jsonEncode({
-        'method': method,
-        'args': args ?? {},
-      }),
+      headers: {'Content-Type': 'application/json', 'X-Auth-Token': _token!},
+      body: jsonEncode({'method': method, 'args': args ?? {}}),
     );
 
     if (response.statusCode != 200) {
@@ -66,13 +64,8 @@ class IpcClient {
 
     final response = await http.post(
       Uri.parse('http://127.0.0.1:$_port/add'),
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Auth-Token': _token!,
-      },
-      body: jsonEncode({
-        'source': url,
-      }),
+      headers: {'Content-Type': 'application/json', 'X-Auth-Token': _token!},
+      body: jsonEncode({'source': url}),
     );
 
     if (response.statusCode != 200) {
@@ -109,4 +102,3 @@ class IpcClient {
     await _callMethod('set_priority', {'task_id': id, 'priority': priority});
   }
 }
-
