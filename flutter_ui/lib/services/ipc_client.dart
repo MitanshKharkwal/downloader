@@ -1,3 +1,4 @@
+﻿import 'package:flutter/foundation.dart';
 import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
@@ -54,7 +55,7 @@ class IpcClient {
       final tasksData = response['tasks'] as List;
       return tasksData.map((t) => DownloadTask.fromJson(t)).toList();
     } catch (e) {
-      print("Error listing tasks: $e");
+      debugPrint("Error listing tasks: $e");
       return [];
     }
   }
@@ -108,3 +109,4 @@ class IpcClient {
     await _callMethod('set_priority', {'task_id': id, 'priority': priority});
   }
 }
+

@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:phosphor_icons/phosphor_icons.dart';
 
 import 'speed_sparkline.dart';
@@ -38,6 +38,17 @@ class _TaskCardState extends State<TaskCard> with SingleTickerProviderStateMixin
   bool _hovered = false;
   late final AnimationController _pulseController;
 
+  /// Optimistic status — flips immediately on user action, reverts on RPC failure.
+  TaskStatus? _optimisticStatus;
+
+  /// Debounce: timestamp of last action to prevent rapid duplicate RPCs.
+  int _lastActionMs = 0;
+
+  bool get _isDebouncing =>
+      DateTime.now().millisecondsSinceEpoch - _lastActionMs < 300;
+
+  TaskStatus get _displayStatus => _optimisticStatus ?? widget.task.status;
+
   @override
   void initState() {
     super.initState();
@@ -50,10 +61,15 @@ class _TaskCardState extends State<TaskCard> with SingleTickerProviderStateMixin
   @override
   void didUpdateWidget(TaskCard oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.task.status != TaskStatus.completed && widget.task.status == TaskStatus.completed) {
+    if (oldWidget.task.status != TaskStatus.completed &&
+        widget.task.status == TaskStatus.completed) {
       _pulseController.forward(from: 0.0).then((_) {
         if (mounted) _pulseController.reverse();
       });
+    }
+    // Clear optimistic once backend confirms
+    if (_optimisticStatus != null && widget.task.status == _optimisticStatus) {
+      _optimisticStatus = null;
     }
   }
 
@@ -63,14 +79,36 @@ class _TaskCardState extends State<TaskCard> with SingleTickerProviderStateMixin
     super.dispose();
   }
 
+  Future<void> _handlePause() async {
+    if (_isDebouncing) return;
+    _lastActionMs = DateTime.now().millisecondsSinceEpoch;
+    setState(() => _optimisticStatus = TaskStatus.paused);
+    try {
+      widget.onPause();
+    } catch (_) {
+      if (mounted) setState(() => _optimisticStatus = null);
+    }
+  }
+
+  Future<void> _handleResume() async {
+    if (_isDebouncing) return;
+    _lastActionMs = DateTime.now().millisecondsSinceEpoch;
+    setState(() => _optimisticStatus = TaskStatus.downloading);
+    try {
+      widget.onResume();
+    } catch (_) {
+      if (mounted) setState(() => _optimisticStatus = null);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final DownloadTask task = widget.task;
     final TextTheme text = Theme.of(context).textTheme;
-    final bool dimmed =
-        task.status == TaskStatus.paused || task.status == TaskStatus.queued;
-    final bool isError = task.status == TaskStatus.error;
-    final bool isDone = task.status == TaskStatus.completed;
+    final TaskStatus status = _displayStatus;
+    final bool dimmed = status == TaskStatus.paused || status == TaskStatus.queued;
+    final bool isError = status == TaskStatus.error;
+    final bool isDone = status == TaskStatus.completed;
 
     return MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
@@ -104,7 +142,7 @@ class _TaskCardState extends State<TaskCard> with SingleTickerProviderStateMixin
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: <Widget>[
-                _FileIcon(task: task),
+                _FileIcon(task: task, displayStatus: status),
               const SizedBox(width: 14),
               Expanded(
                 child: Column(
@@ -145,14 +183,20 @@ class _TaskCardState extends State<TaskCard> with SingleTickerProviderStateMixin
                         ),
                       )
                     else if (isError)
-                      Text(
-                        task.errorMessage ?? 'Download failed',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: text.labelSmall?.copyWith(
-                          color: AppColors.danger,
-                          fontSize: 11,
-                        ),
+                      Row(
+                        children: <Widget>[
+                          Expanded(
+                            child: Text(
+                              task.errorMessage ?? 'Download failed',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: text.labelSmall?.copyWith(
+                                color: AppColors.danger,
+                                fontSize: 11,
+                              ),
+                            ),
+                          ),
+                        ],
                       )
                     else
                       Row(
@@ -188,11 +232,12 @@ class _TaskCardState extends State<TaskCard> with SingleTickerProviderStateMixin
               const SizedBox(width: 16),
               _Stats(task: task, compact: widget.compact),
               const SizedBox(width: 8),
-              _Actions(
+              ActionsWidget(
                 task: task,
+                displayStatus: status,
                 visible: _hovered,
-                onPause: widget.onPause,
-                onResume: widget.onResume,
+                onPause: _handlePause,
+                onResume: _handleResume,
                 onRetry: widget.onRetry,
                 onCancel: widget.onCancel,
                 onRemove: widget.onRemove,
@@ -208,22 +253,25 @@ class _TaskCardState extends State<TaskCard> with SingleTickerProviderStateMixin
 }
 
 class _FileIcon extends StatelessWidget {
-  const _FileIcon({required this.task});
+  const _FileIcon({required this.task, required this.displayStatus});
 
   final DownloadTask task;
+  final TaskStatus displayStatus;
 
   @override
   Widget build(BuildContext context) {
-    final Color tint = task.status == TaskStatus.error
+    final Color tint = displayStatus == TaskStatus.error
         ? AppColors.danger
-        : task.status == TaskStatus.completed
+        : displayStatus == TaskStatus.completed
             ? AppColors.success
             : AppColors.accent;
+
+    final bool isPaused = displayStatus == TaskStatus.paused;
 
     return Stack(
       alignment: Alignment.center,
       children: <Widget>[
-        if (task.status.isActive || task.status == TaskStatus.paused || task.progress > 0)
+        if (displayStatus.isActive || isPaused || task.progress > 0)
           SizedBox(
             width: 44,
             height: 44,
@@ -232,11 +280,15 @@ class _FileIcon extends StatelessWidget {
               duration: const Duration(milliseconds: 950),
               curve: Curves.easeInOutCubic,
               builder: (BuildContext context, double value, _) {
-                return CircularProgressIndicator(
-                  value: value.clamp(0.0, 1.0),
-                  strokeWidth: 2.5,
-                  backgroundColor: Colors.transparent,
-                  color: task.status.color,
+                // Paused: muted opacity + distinct color (spec: visually read as "paused")
+                return Opacity(
+                  opacity: isPaused ? 0.35 : 1.0,
+                  child: CircularProgressIndicator(
+                    value: value.clamp(0.0, 1.0),
+                    strokeWidth: 2.5,
+                    backgroundColor: Colors.transparent,
+                    color: isPaused ? AppColors.textMuted : displayStatus.color,
+                  ),
                 );
               },
             ),
@@ -260,7 +312,7 @@ class _FileIcon extends StatelessWidget {
                 ),
               );
             },
-            child: Icon(task.category.icon, key: ValueKey<TaskStatus>(task.status), size: 18, color: tint),
+            child: Icon(task.category.icon, key: ValueKey<TaskStatus>(displayStatus), size: 18, color: tint),
           ),
         ),
       ],
@@ -326,9 +378,96 @@ class _Stats extends StatelessWidget {
   }
 }
 
-class _Actions extends StatelessWidget {
-  const _Actions({
+/// Shown inline on the task row when user clicks Cancel — requires one confirm step.
+class _CancelConfirmRow extends StatelessWidget {
+  const _CancelConfirmRow({required this.onConfirm, required this.onDismiss});
+
+  final VoidCallback onConfirm;
+  final VoidCallback onDismiss;
+
+  @override
+  Widget build(BuildContext context) {
+    final TextTheme text = Theme.of(context).textTheme;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      mainAxisAlignment: MainAxisAlignment.end,
+      children: [
+        Flexible(
+          child: Text(
+            'Cancel download?',
+            overflow: TextOverflow.ellipsis,
+            maxLines: 1,
+            style: text.labelSmall?.copyWith(
+              color: AppColors.textSecondary,
+              fontSize: 11,
+            ),
+          ),
+        ),
+        const SizedBox(width: 6),
+        _SmallButton(
+          label: 'Yes',
+          color: AppColors.danger,
+          onTap: onConfirm,
+        ),
+        const SizedBox(width: 4),
+        _SmallButton(
+          label: 'No',
+          color: AppColors.textMuted,
+          onTap: onDismiss,
+        ),
+      ],
+    );
+  }
+}
+
+class _SmallButton extends StatefulWidget {
+  const _SmallButton({required this.label, required this.color, required this.onTap});
+  final String label;
+  final Color color;
+  final VoidCallback onTap;
+
+  @override
+  State<_SmallButton> createState() => _SmallButtonState();
+}
+
+class _SmallButtonState extends State<_SmallButton> {
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: AnimatedContainer(
+          duration: AppTheme.fast,
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+          decoration: BoxDecoration(
+            color: _hovered ? widget.color.withValues(alpha: 0.2) : Colors.transparent,
+            borderRadius: AppRadius.sm,
+            border: Border.all(color: widget.color.withValues(alpha: _hovered ? 0.6 : 0.35)),
+          ),
+          child: Text(
+            widget.label,
+            style: TextStyle(
+              color: widget.color,
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+@visibleForTesting
+class ActionsWidget extends StatefulWidget {
+  const ActionsWidget({super.key,
     required this.task,
+    required this.displayStatus,
     required this.visible,
     required this.onPause,
     required this.onResume,
@@ -339,6 +478,7 @@ class _Actions extends StatelessWidget {
   });
 
   final DownloadTask task;
+  final TaskStatus displayStatus;
   final bool visible;
   final VoidCallback onPause;
   final VoidCallback onResume;
@@ -348,16 +488,46 @@ class _Actions extends StatelessWidget {
   final ValueChanged<int> onPriority;
 
   @override
+  State<ActionsWidget> createState() => _ActionsState();
+}
+
+class _ActionsState extends State<ActionsWidget> {
+  /// True when the inline cancel-confirm row is showing.
+  bool _confirmingCancel = false;
+
+  @override
+  void didUpdateWidget(ActionsWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // If task status changed away from an active state, dismiss any pending confirm.
+    if (oldWidget.displayStatus != widget.displayStatus) {
+      _confirmingCancel = false;
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final TaskStatus status = widget.displayStatus;
+
+    // Inline cancel-confirm overlay
+    if (_confirmingCancel) {
+      return _CancelConfirmRow(
+          onConfirm: () {
+            setState(() => _confirmingCancel = false);
+            widget.onCancel();
+          },
+          onDismiss: () => setState(() => _confirmingCancel = false),
+        );
+    }
+
     final List<Widget> buttons = <Widget>[];
 
-    switch (task.status) {
+    switch (status) {
       case TaskStatus.downloading:
         buttons.add(
           _PlayPauseAction(
             isPlaying: true,
             tip: 'Pause',
-            onTap: onPause,
+            onTap: widget.onPause,
           ),
         );
         break;
@@ -367,7 +537,7 @@ class _Actions extends StatelessWidget {
           _PlayPauseAction(
             isPlaying: false,
             tip: 'Resume',
-            onTap: onResume,
+            onTap: widget.onResume,
           ),
         );
         break;
@@ -376,7 +546,7 @@ class _Actions extends StatelessWidget {
           _IconAction(
             icon: PhosphorIcons.arrowsClockwise(PhosphorIconsStyle.light),
             tip: 'Retry',
-            onTap: onRetry,
+            onTap: widget.onRetry,
             color: AppColors.danger,
           ),
         );
@@ -394,16 +564,16 @@ class _Actions extends StatelessWidget {
         break;
     }
 
-    if (task.status == TaskStatus.queued || task.status == TaskStatus.downloading) {
+    if (status == TaskStatus.queued || status == TaskStatus.downloading) {
       IconData pIcon = PhosphorIcons.arrowsDownUp(PhosphorIconsStyle.light);
-      if (task.priority == 2) pIcon = PhosphorIcons.caretDoubleUp(PhosphorIconsStyle.light);
-      if (task.priority == 0) pIcon = PhosphorIcons.caretDoubleDown(PhosphorIconsStyle.light);
+      if (widget.task.priority == 2) pIcon = PhosphorIcons.caretDoubleUp(PhosphorIconsStyle.light);
+      if (widget.task.priority == 0) pIcon = PhosphorIcons.caretDoubleDown(PhosphorIconsStyle.light);
 
       buttons.add(
         PopupMenuButton<int>(
-          initialValue: task.priority ?? 1,
+          initialValue: widget.task.priority ?? 1,
           tooltip: 'Set Priority',
-          onSelected: onPriority,
+          onSelected: widget.onPriority,
           offset: const Offset(0, 32),
           child: _IconAction(
             icon: pIcon,
@@ -428,11 +598,18 @@ class _Actions extends StatelessWidget {
       );
     }
 
+    // X button: for completed/canceled = instant Remove (no confirm needed per spec)
+    //           for active/queued/paused = shows inline confirm first
+    final bool isDoneOrCanceled =
+        status == TaskStatus.completed || status == TaskStatus.canceled;
+
     buttons.add(
       _IconAction(
         icon: PhosphorIcons.x(PhosphorIconsStyle.light),
-        tip: (task.status == TaskStatus.completed || task.status == TaskStatus.canceled) ? 'Remove' : 'Cancel',
-        onTap: (task.status == TaskStatus.completed || task.status == TaskStatus.canceled) ? onRemove : onCancel,
+        tip: isDoneOrCanceled ? 'Remove' : 'Cancel',
+        onTap: isDoneOrCanceled
+            ? widget.onRemove
+            : () => setState(() => _confirmingCancel = true),
       ),
     );
 
@@ -440,9 +617,9 @@ class _Actions extends StatelessWidget {
       width: 104,
       child: AnimatedOpacity(
         duration: AppTheme.fast,
-        opacity: visible ? 1 : 0,
+        opacity: widget.visible ? 1 : 0,
         child: IgnorePointer(
-          ignoring: !visible,
+          ignoring: !widget.visible,
           child: Row(
             mainAxisAlignment: MainAxisAlignment.end,
             children: buttons,
@@ -551,6 +728,7 @@ class _PlayPauseActionState extends State<_PlayPauseAction> with SingleTickerPro
   void didUpdateWidget(_PlayPauseAction oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.isPlaying != widget.isPlaying) {
+      // Optimistic: animate immediately without waiting for RPC
       if (widget.isPlaying) {
         _controller.forward();
       } else {
@@ -611,3 +789,9 @@ class _PlayPauseActionState extends State<_PlayPauseAction> with SingleTickerPro
     );
   }
 }
+
+
+
+
+
+

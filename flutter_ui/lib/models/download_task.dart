@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:phosphor_icons/phosphor_icons.dart';
 
 import '../theme/app_theme.dart';
@@ -78,7 +78,7 @@ extension TaskStatusX on TaskStatus {
       case TaskStatus.queued:
         return AppColors.warning;
       case TaskStatus.canceled:
-        return AppColors.textMuted;
+        return AppColors.textSecondary;
     }
   }
 
@@ -102,20 +102,33 @@ class DownloadTask {
   factory DownloadTask.fromJson(Map<String, dynamic> json) {
     TaskCategory category = TaskCategory.other;
     final catStr = json['category']?.toString().toLowerCase() ?? '';
-    if (catStr.contains('video')) category = TaskCategory.video;
-    else if (catStr.contains('music') || catStr.contains('audio')) category = TaskCategory.music;
-    else if (catStr.contains('program') || catStr.contains('exe')) category = TaskCategory.programs;
-    else if (catStr.contains('compressed') || catStr.contains('zip')) category = TaskCategory.compressed;
-    else if (catStr.contains('photo') || catStr.contains('image')) category = TaskCategory.photos;
-    else if (catStr.contains('document') || catStr.contains('pdf')) category = TaskCategory.documents;
+    if (catStr.contains('video')) {
+      category = TaskCategory.video;
+    } else if (catStr.contains('music') || catStr.contains('audio')) {
+      category = TaskCategory.music;
+    } else if (catStr.contains('program') || catStr.contains('exe')) {
+      category = TaskCategory.programs;
+    } else if (catStr.contains('compressed') || catStr.contains('zip')) {
+      category = TaskCategory.compressed;
+    } else if (catStr.contains('photo') || catStr.contains('image')) {
+      category = TaskCategory.photos;
+    } else if (catStr.contains('document') || catStr.contains('pdf')) {
+      category = TaskCategory.documents;
+    }
 
     TaskStatus status = TaskStatus.queued;
     final statStr = json['status']?.toString().toUpperCase() ?? '';
-    if (statStr == 'DOWNLOADING') status = TaskStatus.downloading;
-    else if (statStr == 'PAUSED') status = TaskStatus.paused;
-    else if (statStr == 'COMPLETED') status = TaskStatus.completed;
-    else if (statStr == 'ERROR') status = TaskStatus.error;
-    else if (statStr == 'CANCELED') status = TaskStatus.canceled;
+    if (statStr == 'DOWNLOADING') {
+      status = TaskStatus.downloading;
+    } else if (statStr == 'PAUSED') {
+      status = TaskStatus.paused;
+    } else if (statStr == 'COMPLETED') {
+      status = TaskStatus.completed;
+    } else if (statStr == 'ERROR') {
+      status = TaskStatus.error;
+    } else if (statStr == 'CANCELED') {
+      status = TaskStatus.canceled;
+    }
 
     final totalBytes = json['total_bytes'] ?? 0;
     final downloadedBytes = json['downloaded_bytes'] ?? 0;
@@ -171,7 +184,7 @@ class DownloadTask {
   String get sizeLabel => formatBytes(sizeBytes);
 
   String get speedLabel =>
-      status.isActive ? '${formatBytes(speedBytesPerSec.round())}/s' : '—';
+      status.isActive ? '${formatBytes(speedBytesPerSec.round())}/s' : 'â€”';
 
   String get etaLabel {
     if (status == TaskStatus.completed) return 'Done';
@@ -180,7 +193,7 @@ class DownloadTask {
     if (status == TaskStatus.paused) return 'Paused';
     if (status == TaskStatus.queued) return 'Queued';
     final int? eta = etaSeconds;
-    if (eta == null) return '—';
+    if (eta == null) return 'â€”';
     return formatDuration(eta);
   }
 
@@ -211,3 +224,5 @@ class DownloadTask {
     return restMinutes == 0 ? '${hours}h' : '${hours}h ${restMinutes}m';
   }
 }
+
+

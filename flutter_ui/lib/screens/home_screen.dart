@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -159,8 +159,9 @@ class _HomeScreenState extends State<HomeScreen> {
       pageBuilder: (BuildContext context, Animation<double> animation, Animation<double> secondaryAnimation) {
         return AddUrlDialog(
           onAdd: (String url) async {
+            // onAdd is now async — throws on error so dialog can show it inline
             await _ipcClient.addUrl(url);
-            _fetchTasks();
+            await _fetchTasks();
           },
         );
       },
@@ -208,63 +209,71 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: LayoutBuilder(
-        builder: (BuildContext context, BoxConstraints constraints) {
-          final bool collapsed = constraints.maxWidth < 900;
-          final bool compact = constraints.maxWidth < 760;
+    return CallbackShortcuts(
+      bindings: <ShortcutActivator, VoidCallback>{
+        const SingleActivator(LogicalKeyboardKey.keyN, control: true): _addTask,
+      },
+      child: Focus(
+        autofocus: true,
+        child: Scaffold(
+          body: LayoutBuilder(
+            builder: (BuildContext context, BoxConstraints constraints) {
+              final bool collapsed = constraints.maxWidth < 900;
+              final bool compact = constraints.maxWidth < 760;
 
-          return Stack(
-            children: <Widget>[
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
+              return Stack(
                 children: <Widget>[
-                  Sidebar(
-                    selected: _selectedNav,
-                    counts: _counts(),
-                    collapsed: collapsed,
-                    onSelect: (int index) {
-                      if (index == _selectedNav) return;
-                      _selectedNav = index;
-                      _resyncList();
-                    },
-                    onNewDownload: _addTask,
-                    onSettings: _openSettings,
-                  ),
-                  Expanded(child: _buildMain(compact)),
-                ],
-              ),
-              AnimatedPositioned(
-                duration: AppTheme.medium,
-                curve: Curves.easeOutCubic,
-                top: _isConnected ? -60 : 0,
-                left: 0,
-                right: 0,
-                height: 48,
-                child: Container(
-                  alignment: Alignment.center,
-                  decoration: const BoxDecoration(
-                    color: AppColors.danger,
-                    boxShadow: <BoxShadow>[
-                      BoxShadow(color: Colors.black26, blurRadius: 8, offset: Offset(0, 4)),
-                    ],
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: <Widget>[
-                      Icon(PhosphorIcons.warningCircle(PhosphorIconsStyle.fill), color: Colors.white, size: 20),
-                      const SizedBox(width: 8),
-                      const Text(
-                        'Daemon disconnected. Retrying connection...',
-                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.w500, fontSize: 13),
+                      Sidebar(
+                        selected: _selectedNav,
+                        counts: _counts(),
+                        collapsed: collapsed,
+                        onSelect: (int index) {
+                          if (index == _selectedNav) return;
+                          _selectedNav = index;
+                          _resyncList();
+                        },
+                        onNewDownload: _addTask,
+                        onSettings: _openSettings,
                       ),
+                      Expanded(child: _buildMain(compact)),
                     ],
                   ),
-                ),
-              ),
-            ],
-          );
-        },
+                  AnimatedPositioned(
+                    duration: AppTheme.medium,
+                    curve: Curves.easeOutCubic,
+                    top: _isConnected ? -60 : 0,
+                    left: 0,
+                    right: 0,
+                    height: 48,
+                    child: Container(
+                      alignment: Alignment.center,
+                      decoration: const BoxDecoration(
+                        color: AppColors.danger,
+                        boxShadow: <BoxShadow>[
+                          BoxShadow(color: Colors.black26, blurRadius: 8, offset: Offset(0, 4)),
+                        ],
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: <Widget>[
+                          Icon(PhosphorIcons.warningCircle(PhosphorIconsStyle.fill), color: Colors.white, size: 20),
+                          const SizedBox(width: 8),
+                          const Text(
+                            'Daemon disconnected. Retrying connection...',
+                            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w500, fontSize: 13),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
+        ),
       ),
     );
   }
@@ -272,6 +281,10 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildMain(bool compact) {
     final NavItem item = kNavItems[_selectedNav];
     final int activeCount = _visible.where((DownloadTask t) => t.status == TaskStatus.downloading).length;
+
+    // Determine empty state context: is it a category filter with 0 results?
+    final bool isCategoryFilter = kNavItems[_selectedNav].category != null;
+    final bool hasAnyTasksAtAll = _all.isNotEmpty;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -287,21 +300,12 @@ class _HomeScreenState extends State<HomeScreen> {
             _resyncList();
           },
           compact: compact,
+          onAdd: _addTask,
         ),
         if (_visible.isNotEmpty) TaskListHeader(compact: compact),
         Expanded(
           child: _visible.isEmpty
-              ? EmptyState(
-                  title: _query.trim().isEmpty ? 'No active tasks' : 'No results found',
-                  subtitle: _query.trim().isEmpty
-                      ? 'Click the button below or press Ctrl+N to add a new download.'
-                      : 'Try adjusting your search or filters.',
-                  icon: _query.trim().isEmpty
-                      ? PhosphorIcons.tray(PhosphorIconsStyle.light)
-                      : PhosphorIcons.magnifyingGlassMinus(PhosphorIconsStyle.light),
-                  onAction: _query.trim().isEmpty ? _addTask : null,
-                  actionLabel: 'New Download',
-                )
+              ? _buildEmptyState(isCategoryFilter, hasAnyTasksAtAll)
               : TaskList(
                   tasks: _visible,
                   compact: compact,
@@ -334,6 +338,36 @@ class _HomeScreenState extends State<HomeScreen> {
       ],
     );
   }
+
+  Widget _buildEmptyState(bool isCategoryFilter, bool hasAnyTasksAtAll) {
+    // Three distinct cases per spec:
+    // 1. Search query is active
+    if (_query.trim().isNotEmpty) {
+      return EmptyState(
+        title: 'No results found',
+        subtitle: 'Try adjusting your search or filters.',
+        icon: PhosphorIcons.magnifyingGlassMinus(PhosphorIconsStyle.light),
+      );
+    }
+    // 2. Category filter selected with 0 matching tasks
+    if (isCategoryFilter) {
+      return EmptyState(
+        title: 'No downloads in this category',
+        subtitle: 'Downloads you add matching this file type will appear here.',
+        icon: PhosphorIcons.folder(PhosphorIconsStyle.light),
+        onAction: _addTask,
+        actionLabel: 'New Download',
+      );
+    }
+    // 3. Truly empty — no tasks at all
+    return EmptyState(
+      title: 'No downloads yet',
+      subtitle: 'Click the button below or press Ctrl+N to add a new download.',
+      icon: PhosphorIcons.tray(PhosphorIconsStyle.light),
+      onAction: _addTask,
+      actionLabel: 'New Download',
+    );
+  }
 }
 
 class _Header extends StatelessWidget {
@@ -343,6 +377,7 @@ class _Header extends StatelessWidget {
     required this.controller,
     required this.onQueryChanged,
     required this.compact,
+    required this.onAdd,
   });
 
   final String title;
@@ -350,6 +385,7 @@ class _Header extends StatelessWidget {
   final TextEditingController controller;
   final ValueChanged<String> onQueryChanged;
   final bool compact;
+  final VoidCallback onAdd;
 
   @override
   Widget build(BuildContext context) {
