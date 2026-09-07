@@ -73,10 +73,7 @@ class _TaskListState extends State<TaskList> {
       final DownloadTask task = newList[i];
       if (i >= _items.length || _items[i].id != task.id) {
         _items.insert(i, task);
-        _listKey.currentState?.insertItem(
-          i,
-          duration: const Duration(milliseconds: 220),
-        );
+        _listKey.currentState?.insertItem(i, duration: const Duration(milliseconds: 220));
       } else {
         _items[i] = task;
       }
@@ -108,17 +105,11 @@ class _TaskListState extends State<TaskList> {
       );
     }
 
-    final CurvedAnimation curved = CurvedAnimation(
-      parent: animation,
-      curve: Curves.easeOutCubic,
-    );
+    final CurvedAnimation curved = CurvedAnimation(parent: animation, curve: Curves.easeOutCubic);
     final Widget animatedChild = FadeTransition(
       opacity: curved,
       child: SlideTransition(
-        position: Tween<Offset>(
-          begin: const Offset(0, 0.2),
-          end: Offset.zero,
-        ).animate(curved),
+        position: Tween<Offset>(begin: const Offset(0, 0.2), end: Offset.zero).animate(curved),
         child: child,
       ),
     );
@@ -137,10 +128,9 @@ class _TaskListState extends State<TaskList> {
       key: _listKey,
       initialItemCount: _items.length,
       padding: const EdgeInsets.fromLTRB(28, 4, 28, 28),
-      itemBuilder:
-          (BuildContext context, int index, Animation<double> animation) {
-            return _buildItem(_items[index], animation, index: index);
-          },
+      itemBuilder: (BuildContext context, int index, Animation<double> animation) {
+        return _buildItem(_items[index], animation, index: index);
+      },
     );
   }
 }
@@ -182,10 +172,7 @@ class _StaggeredEntranceState extends State<_StaggeredEntrance> {
       builder: (BuildContext context, double val, Widget? child) {
         return Opacity(
           opacity: val,
-          child: Transform.translate(
-            offset: Offset(0, 8 * (1 - val)),
-            child: child,
-          ),
+          child: Transform.translate(offset: Offset(0, 8 * (1 - val)), child: child),
         );
       },
       child: widget.child,
@@ -201,11 +188,9 @@ class TaskListHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final TextStyle? style = Theme.of(context).textTheme.labelSmall?.copyWith(
-      color: AppColors.textMuted,
-      fontSize: 10,
-      letterSpacing: 0.9,
-    );
+    final TextStyle? style = Theme.of(
+      context,
+    ).textTheme.labelSmall?.copyWith(color: AppColors.textMuted, fontSize: 10, letterSpacing: 0.9);
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(42, 0, 42, 10),

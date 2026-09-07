@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:phosphor_icons/phosphor_icons.dart';
 
 import '../models/download_task.dart';
@@ -14,10 +14,7 @@ class NavItem {
 }
 
 final List<NavItem> kNavItems = <NavItem>[
-  NavItem(
-    label: 'All Downloads',
-    icon: PhosphorIcons.download(PhosphorIconsStyle.light),
-  ),
+  NavItem(label: 'All Downloads', icon: PhosphorIcons.download(PhosphorIconsStyle.light)),
   NavItem(
     label: 'Video',
     icon: PhosphorIcons.videoCamera(PhosphorIconsStyle.light),
@@ -88,10 +85,7 @@ class Sidebar extends StatelessWidget {
           _Brand(collapsed: collapsed),
           Padding(
             padding: EdgeInsets.symmetric(horizontal: collapsed ? 12 : 14),
-            child: _NewDownloadButton(
-              collapsed: collapsed,
-              onPressed: onNewDownload,
-            ),
+            child: _NewDownloadButton(collapsed: collapsed, onPressed: onNewDownload),
           ),
           const SizedBox(height: 18),
           if (!collapsed)
@@ -126,9 +120,7 @@ class Sidebar extends StatelessWidget {
                     ),
                   ),
                   Column(
-                    children: List<Widget>.generate(kNavItems.length, (
-                      int index,
-                    ) {
+                    children: List<Widget>.generate(kNavItems.length, (int index) {
                       return _SidebarTile(
                         item: kNavItems[index],
                         selected: index == selected,
@@ -146,10 +138,7 @@ class Sidebar extends StatelessWidget {
           Padding(
             padding: EdgeInsets.fromLTRB(12, 10, 12, 14),
             child: _SidebarTile(
-              item: NavItem(
-                label: 'Settings',
-                icon: PhosphorIcons.gear(PhosphorIconsStyle.light),
-              ),
+              item: NavItem(label: 'Settings', icon: PhosphorIcons.gear(PhosphorIconsStyle.light)),
               selected: false,
               count: 0,
               collapsed: collapsed,
@@ -180,11 +169,7 @@ class _Brand extends StatelessWidget {
           end: Alignment.bottomRight,
         ),
       ),
-      child: Icon(
-        PhosphorIcons.arrowDown(PhosphorIconsStyle.light),
-        size: 16,
-        color: Colors.white,
-      ),
+      child: Icon(PhosphorIcons.arrowDown(PhosphorIconsStyle.light), size: 16, color: Colors.white),
     );
 
     return Padding(
@@ -196,10 +181,9 @@ class _Brand extends StatelessWidget {
             const SizedBox(width: 10),
             Text(
               'Fetchly',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                fontSize: 15,
-                color: AppColors.textPrimary,
-              ),
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontSize: 15, color: AppColors.textPrimary),
             ),
           ],
         ],
@@ -240,11 +224,7 @@ class _NewDownloadButtonState extends State<_NewDownloadButton> {
               borderRadius: AppRadius.md,
             ),
             child: widget.collapsed
-                ? Icon(
-                    PhosphorIcons.plus(PhosphorIconsStyle.light),
-                    size: 18,
-                    color: Colors.white,
-                  )
+                ? Icon(PhosphorIcons.plus(PhosphorIconsStyle.light), size: 18, color: Colors.white)
                 : Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: <Widget>[
@@ -301,9 +281,7 @@ class _SidebarTileState extends State<_SidebarTile> {
         : _hovered
         ? AppColors.textSecondary
         : AppColors.textMuted;
-    final Color bg = _hovered && !widget.selected
-        ? AppColors.surface
-        : Colors.transparent;
+    final Color bg = _hovered && !widget.selected ? AppColors.surface : Colors.transparent;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 2),
@@ -318,12 +296,8 @@ class _SidebarTileState extends State<_SidebarTile> {
             child: AnimatedContainer(
               duration: AppTheme.fast,
               height: 36,
-              padding: EdgeInsets.symmetric(
-                horizontal: widget.collapsed ? 0 : 10,
-              ),
-              alignment: widget.collapsed
-                  ? Alignment.center
-                  : Alignment.centerLeft,
+              padding: EdgeInsets.symmetric(horizontal: widget.collapsed ? 0 : 10),
+              alignment: widget.collapsed ? Alignment.center : Alignment.centerLeft,
               decoration: BoxDecoration(color: bg, borderRadius: AppRadius.sm),
               child: widget.collapsed
                   ? Icon(widget.item.icon, size: 18, color: fg)
@@ -337,9 +311,7 @@ class _SidebarTileState extends State<_SidebarTile> {
                             overflow: TextOverflow.ellipsis,
                             style: text.bodyMedium?.copyWith(
                               fontSize: 13,
-                              fontWeight: widget.selected
-                                  ? FontWeight.w600
-                                  : FontWeight.w500,
+                              fontWeight: widget.selected ? FontWeight.w600 : FontWeight.w500,
                               color: fg,
                             ),
                           ),
@@ -363,5 +335,3 @@ class _SidebarTileState extends State<_SidebarTile> {
     );
   }
 }
-
-

@@ -12,8 +12,7 @@ class IpcClient {
   Future<void> _loadToken() async {
     if (_token != null) return;
 
-    final homeDir =
-        Platform.environment['USERPROFILE'] ?? Platform.environment['HOME'];
+    final homeDir = Platform.environment['USERPROFILE'] ?? Platform.environment['HOME'];
     if (homeDir == null) return;
 
     final tokenFile = File('$homeDir/.download_manager/ipc_token.txt');
@@ -22,10 +21,7 @@ class IpcClient {
     }
   }
 
-  Future<dynamic> _callMethod(
-    String method, [
-    Map<String, dynamic>? args,
-  ]) async {
+  Future<dynamic> _callMethod(String method, [Map<String, dynamic>? args]) async {
     await _loadToken();
     if (_token == null) throw Exception("IPC Token not found");
 

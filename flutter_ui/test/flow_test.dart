@@ -63,21 +63,14 @@ void main() {
       final addButton = tester.widget<ElevatedButton>(
         find.widgetWithText(ElevatedButton, 'Add Task'),
       );
-      expect(
-        addButton.onPressed,
-        isNull,
-        reason: 'Add button must be disabled for invalid URL',
-      );
+      expect(addButton.onPressed, isNull, reason: 'Add button must be disabled for invalid URL');
     });
 
     testWidgets('Add button enabled for valid http URL', (tester) async {
       await tester.pumpWidget(_wrap(AddUrlDialog(onAdd: (_) async {})));
       await tester.pumpAndSettle();
 
-      await tester.enterText(
-        find.byType(TextField),
-        'http://example.com/file.zip',
-      );
+      await tester.enterText(find.byType(TextField), 'http://example.com/file.zip');
       await tester.pump();
 
       final addButton = tester.widget<ElevatedButton>(
@@ -94,25 +87,16 @@ void main() {
       await tester.pumpWidget(_wrap(AddUrlDialog(onAdd: (_) async {})));
       await tester.pumpAndSettle();
 
-      await tester.enterText(
-        find.byType(TextField),
-        'magnet:?xt=urn:btih:abc123',
-      );
+      await tester.enterText(find.byType(TextField), 'magnet:?xt=urn:btih:abc123');
       await tester.pump();
 
       final addButton = tester.widget<ElevatedButton>(
         find.widgetWithText(ElevatedButton, 'Add Task'),
       );
-      expect(
-        addButton.onPressed,
-        isNotNull,
-        reason: 'Add button must be enabled for magnet: link',
-      );
+      expect(addButton.onPressed, isNotNull, reason: 'Add button must be enabled for magnet: link');
     });
 
-    testWidgets('Dialog stays open and shows error on failed submit', (
-      tester,
-    ) async {
+    testWidgets('Dialog stays open and shows error on failed submit', (tester) async {
       await tester.pumpWidget(
         MaterialApp(
           theme: AppTheme.dark(),
@@ -122,9 +106,8 @@ void main() {
                 return ElevatedButton(
                   onPressed: () => showDialog(
                     context: ctx,
-                    builder: (_) => AddUrlDialog(
-                      onAdd: (_) async => throw Exception('Unreachable host'),
-                    ),
+                    builder: (_) =>
+                        AddUrlDialog(onAdd: (_) async => throw Exception('Unreachable host')),
                   ),
                   child: const Text('Open'),
                 );
@@ -138,10 +121,7 @@ void main() {
       await tester.tap(find.text('Open'));
       await tester.pumpAndSettle();
 
-      await tester.enterText(
-        find.byType(TextField),
-        'http://example.com/file.zip',
-      );
+      await tester.enterText(find.byType(TextField), 'http://example.com/file.zip');
       await tester.pump();
       await tester.tap(find.widgetWithText(ElevatedButton, 'Add Task'));
       await tester.pumpAndSettle();
@@ -166,139 +146,123 @@ void main() {
   // ──────────────────────────────────────────────────────────────────
 
   group('Flow 3 — Pause / Resume', () {
-    testWidgets(
-      'Paused progress ring has distinct visual (lower opacity) vs downloading',
-      (tester) async {
-        // Both tasks have same progress, but paused must look different.
-        // We verify via the Opacity widget that wraps the CircularProgressIndicator for paused.
-        await tester.pumpWidget(
-          _wrap(
-            Column(
-              children: [
-                TaskCard(
-                  task: _task(id: 'a', status: TaskStatus.downloading),
-                  onPause: () {},
-                  onResume: () {},
-                  onRetry: () {},
-                  onCancel: () {},
-                  onRemove: () {},
-                  onPriority: (_) {},
-                ),
-                TaskCard(
-                  task: _task(id: 'b', status: TaskStatus.paused),
-                  onPause: () {},
-                  onResume: () {},
-                  onRetry: () {},
-                  onCancel: () {},
-                  onRemove: () {},
-                  onPriority: (_) {},
-                ),
-              ],
-            ),
+    testWidgets('Paused progress ring has distinct visual (lower opacity) vs downloading', (
+      tester,
+    ) async {
+      // Both tasks have same progress, but paused must look different.
+      // We verify via the Opacity widget that wraps the CircularProgressIndicator for paused.
+      await tester.pumpWidget(
+        _wrap(
+          Column(
+            children: [
+              TaskCard(
+                task: _task(id: 'a', status: TaskStatus.downloading),
+                onPause: () {},
+                onResume: () {},
+                onRetry: () {},
+                onCancel: () {},
+                onRemove: () {},
+                onPriority: (_) {},
+              ),
+              TaskCard(
+                task: _task(id: 'b', status: TaskStatus.paused),
+                onPause: () {},
+                onResume: () {},
+                onRetry: () {},
+                onCancel: () {},
+                onRemove: () {},
+                onPriority: (_) {},
+              ),
+            ],
           ),
-        );
-        await tester.pumpAndSettle();
+        ),
+      );
+      await tester.pumpAndSettle();
 
-        // Both cards render — the paused one has an Opacity widget wrapping the progress ring
-        // with opacity 0.35 (we check via the Opacity widgets in the tree).
-        final opacityWidgets = tester
-            .widgetList<Opacity>(find.byType(Opacity))
-            .where((o) => o.opacity == 0.35)
-            .toList();
-        expect(
-          opacityWidgets.length,
-          greaterThanOrEqualTo(1),
-          reason:
-              'Paused progress ring must have reduced opacity (0.35) vs downloading',
-        );
-      },
-    );
+      // Both cards render — the paused one has an Opacity widget wrapping the progress ring
+      // with opacity 0.35 (we check via the Opacity widgets in the tree).
+      final opacityWidgets = tester
+          .widgetList<Opacity>(find.byType(Opacity))
+          .where((o) => o.opacity == 0.35)
+          .toList();
+      expect(
+        opacityWidgets.length,
+        greaterThanOrEqualTo(1),
+        reason: 'Paused progress ring must have reduced opacity (0.35) vs downloading',
+      );
+    });
 
-    testWidgets(
-      'Pause callback fires on action tap (via ActionsWidget direct)',
-      (tester) async {
-        bool pauseCalled = false;
+    testWidgets('Pause callback fires on action tap (via ActionsWidget direct)', (tester) async {
+      bool pauseCalled = false;
 
-        await tester.pumpWidget(
-          _wrap(
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                ActionsWidget(
-                  task: _task(status: TaskStatus.downloading),
-                  displayStatus: TaskStatus.downloading,
-                  visible: true,
-                  onPause: () => pauseCalled = true,
-                  onResume: () {},
-                  onRetry: () {},
-                  onCancel: () {},
-                  onRemove: () {},
-                  onPriority: (_) {},
-                ),
-              ],
-            ),
+      await tester.pumpWidget(
+        _wrap(
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              ActionsWidget(
+                task: _task(status: TaskStatus.downloading),
+                displayStatus: TaskStatus.downloading,
+                visible: true,
+                onPause: () => pauseCalled = true,
+                onResume: () {},
+                onRetry: () {},
+                onCancel: () {},
+                onRemove: () {},
+                onPriority: (_) {},
+              ),
+            ],
           ),
-        );
-        await tester.pumpAndSettle();
+        ),
+      );
+      await tester.pumpAndSettle();
 
-        // Tap the AnimatedIcon (play/pause icon)
-        final icons = find.byType(AnimatedIcon);
-        expect(
-          icons,
-          findsWidgets,
-          reason: 'AnimatedIcon (play/pause) must be visible',
-        );
+      // Tap the AnimatedIcon (play/pause icon)
+      final icons = find.byType(AnimatedIcon);
+      expect(icons, findsWidgets, reason: 'AnimatedIcon (play/pause) must be visible');
+      await tester.tap(icons.first, warnIfMissed: false);
+      await tester.pump();
+
+      expect(pauseCalled, isTrue, reason: 'onPause callback must be called on tap');
+    });
+
+    testWidgets('Rapid double-tap does not fire pause callback twice (debounce)', (tester) async {
+      int pauseCount = 0;
+
+      await tester.pumpWidget(
+        _wrap(
+          TaskCard(
+            task: _task(status: TaskStatus.downloading),
+            onPause: () => pauseCount++,
+            onResume: () {},
+            onRetry: () {},
+            onCancel: () {},
+            onRemove: () {},
+            onPriority: (_) {},
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final gesture = await tester.createGesture();
+      await gesture.addPointer();
+      await gesture.moveTo(tester.getCenter(find.byType(TaskCard)));
+      await tester.pump();
+
+      final icons = find.byType(AnimatedIcon);
+      if (icons.evaluate().isNotEmpty) {
+        await tester.tap(icons.first, warnIfMissed: false);
+        await tester.pump(const Duration(milliseconds: 50));
         await tester.tap(icons.first, warnIfMissed: false);
         await tester.pump();
+      }
 
-        expect(
-          pauseCalled,
-          isTrue,
-          reason: 'onPause callback must be called on tap',
-        );
-      },
-    );
-
-    testWidgets(
-      'Rapid double-tap does not fire pause callback twice (debounce)',
-      (tester) async {
-        int pauseCount = 0;
-
-        await tester.pumpWidget(
-          _wrap(
-            TaskCard(
-              task: _task(status: TaskStatus.downloading),
-              onPause: () => pauseCount++,
-              onResume: () {},
-              onRetry: () {},
-              onCancel: () {},
-              onRemove: () {},
-              onPriority: (_) {},
-            ),
-          ),
-        );
-        await tester.pumpAndSettle();
-
-        final gesture = await tester.createGesture();
-        await gesture.addPointer();
-        await gesture.moveTo(tester.getCenter(find.byType(TaskCard)));
-        await tester.pump();
-
-        final icons = find.byType(AnimatedIcon);
-        if (icons.evaluate().isNotEmpty) {
-          await tester.tap(icons.first, warnIfMissed: false);
-          await tester.pump(const Duration(milliseconds: 50));
-          await tester.tap(icons.first, warnIfMissed: false);
-          await tester.pump();
-        }
-
-        expect(
-          pauseCount,
-          lessThanOrEqualTo(1),
-          reason: 'Debounce must prevent duplicate calls on rapid double-tap',
-        );
-      },
-    );
+      expect(
+        pauseCount,
+        lessThanOrEqualTo(1),
+        reason: 'Debounce must prevent duplicate calls on rapid double-tap',
+      );
+    });
   });
 
   // ──────────────────────────────────────────────────────────────────
@@ -306,63 +270,56 @@ void main() {
   // ──────────────────────────────────────────────────────────────────
 
   group('Flow 4 — Cancel', () {
-    testWidgets(
-      'Cancel flow — _ActionsState state machine: confirming fires onCancel',
-      (tester) async {
-        bool cancelCalled = false;
-        // Directly test _Actions widget in isolation, visible=true so no hover needed
-        await tester.pumpWidget(
-          _wrap(
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                ActionsWidget(
-                  task: _task(status: TaskStatus.downloading),
-                  displayStatus: TaskStatus.downloading,
-                  visible: true,
-                  onPause: () {},
-                  onResume: () {},
-                  onRetry: () {},
-                  onCancel: () => cancelCalled = true,
-                  onRemove: () {},
-                  onPriority: (_) {},
-                ),
-              ],
-            ),
-          ),
-        );
-        await tester.pumpAndSettle();
-
-        // Tap X (Cancel) — should show confirm row, NOT fire cancelCalled
-        await tester.tap(find.byTooltip('Cancel'), warnIfMissed: false);
-        await tester.pump();
-
-        expect(
-          cancelCalled,
-          isFalse,
-          reason: 'Cancel must NOT fire immediately — confirmation required',
-        );
-        expect(
-          find.text('Cancel download?'),
-          findsOneWidget,
-          reason: 'Confirm row must appear after tapping Cancel',
-        );
-
-        // Now confirm
-        await tester.tap(find.text('Yes'));
-        await tester.pump();
-
-        expect(
-          cancelCalled,
-          isTrue,
-          reason: 'onCancel must fire after confirming',
-        );
-      },
-    );
-
-    testWidgets('Dismissing cancel confirm does not call onCancel', (
+    testWidgets('Cancel flow — _ActionsState state machine: confirming fires onCancel', (
       tester,
     ) async {
+      bool cancelCalled = false;
+      // Directly test _Actions widget in isolation, visible=true so no hover needed
+      await tester.pumpWidget(
+        _wrap(
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              ActionsWidget(
+                task: _task(status: TaskStatus.downloading),
+                displayStatus: TaskStatus.downloading,
+                visible: true,
+                onPause: () {},
+                onResume: () {},
+                onRetry: () {},
+                onCancel: () => cancelCalled = true,
+                onRemove: () {},
+                onPriority: (_) {},
+              ),
+            ],
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Tap X (Cancel) — should show confirm row, NOT fire cancelCalled
+      await tester.tap(find.byTooltip('Cancel'), warnIfMissed: false);
+      await tester.pump();
+
+      expect(
+        cancelCalled,
+        isFalse,
+        reason: 'Cancel must NOT fire immediately — confirmation required',
+      );
+      expect(
+        find.text('Cancel download?'),
+        findsOneWidget,
+        reason: 'Confirm row must appear after tapping Cancel',
+      );
+
+      // Now confirm
+      await tester.tap(find.text('Yes'));
+      await tester.pump();
+
+      expect(cancelCalled, isTrue, reason: 'onCancel must fire after confirming');
+    });
+
+    testWidgets('Dismissing cancel confirm does not call onCancel', (tester) async {
       bool cancelCalled = false;
       await tester.pumpWidget(
         _wrap(
@@ -394,11 +351,7 @@ void main() {
       await tester.tap(find.text('No'));
       await tester.pumpAndSettle();
 
-      expect(
-        cancelCalled,
-        isFalse,
-        reason: 'Dismissing confirm must not cancel',
-      );
+      expect(cancelCalled, isFalse, reason: 'Dismissing confirm must not cancel');
       expect(
         find.text('Cancel download?'),
         findsNothing,
@@ -435,9 +388,7 @@ void main() {
       );
     });
 
-    testWidgets('Remove on completed calls onRemove without confirm dialog', (
-      tester,
-    ) async {
+    testWidgets('Remove on completed calls onRemove without confirm dialog', (tester) async {
       bool removeCalled = false;
 
       await tester.pumpWidget(
@@ -470,11 +421,7 @@ void main() {
         findsNothing,
         reason: 'No confirmation for removing completed task',
       );
-      expect(
-        removeCalled,
-        isTrue,
-        reason: 'onRemove fires immediately for completed tasks',
-      );
+      expect(removeCalled, isTrue, reason: 'onRemove fires immediately for completed tasks');
     });
 
     testWidgets('All 6 task statuses have distinct colors', (tester) async {

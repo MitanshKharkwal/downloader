@@ -3,11 +3,7 @@ import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 
 class SpeedSparkline extends StatefulWidget {
-  const SpeedSparkline({
-    super.key,
-    required this.speedBytesPerSec,
-    required this.active,
-  });
+  const SpeedSparkline({super.key, required this.speedBytesPerSec, required this.active});
 
   final double speedBytesPerSec;
   final bool active;
@@ -79,10 +75,7 @@ class _SpeedSparklineState extends State<SpeedSparkline> {
               barWidth: 1.5,
               isStrokeCapRound: true,
               dotData: const FlDotData(show: false),
-              belowBarData: BarAreaData(
-                show: true,
-                color: AppColors.accentSoft,
-              ),
+              belowBarData: BarAreaData(show: true, color: AppColors.accentSoft),
             ),
           ],
         ),

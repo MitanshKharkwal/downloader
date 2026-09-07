@@ -57,19 +57,13 @@ class EmptyState extends StatelessWidget {
               Text(
                 title,
                 textAlign: TextAlign.center,
-                style: text.titleMedium?.copyWith(
-                  fontSize: 17,
-                  color: AppColors.textPrimary,
-                ),
+                style: text.titleMedium?.copyWith(fontSize: 17, color: AppColors.textPrimary),
               ),
               const SizedBox(height: 8),
               Text(
                 subtitle,
                 textAlign: TextAlign.center,
-                style: text.bodySmall?.copyWith(
-                  color: AppColors.textMuted,
-                  height: 1.5,
-                ),
+                style: text.bodySmall?.copyWith(color: AppColors.textMuted, height: 1.5),
               ),
               if (onAction != null && actionLabel != null) ...<Widget>[
                 const SizedBox(height: 20),
@@ -110,9 +104,7 @@ class _GhostButtonState extends State<_GhostButton> {
           decoration: BoxDecoration(
             color: _hovered ? AppColors.accent : AppColors.accentSoft,
             borderRadius: AppRadius.md,
-            border: Border.all(
-              color: _hovered ? AppColors.accent : AppColors.borderStrong,
-            ),
+            border: Border.all(color: _hovered ? AppColors.accent : AppColors.borderStrong),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,

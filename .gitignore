@@ -27,3 +27,14 @@ smoke_out/
 packaging/dist/
 packaging/build/
 flutter_ui/build/
+# Node (font tooling)
+flutter_ui/node_modules/
+flutter_ui/package.json
+flutter_ui/package-lock.json
+
+# Spec docs (not part of codebase)
+gemini_*.md
+
+# Test artifacts
+test_downloads/
+ui_errors.log

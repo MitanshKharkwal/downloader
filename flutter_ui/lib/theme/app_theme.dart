@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 
 /// Central design tokens. Change the accent here and it propagates everywhere.
 class AppColors {
@@ -43,14 +43,11 @@ class AppTheme {
   static const Duration medium = Duration(milliseconds: 260);
 
   static TextTheme _textTheme() {
-    final TextTheme base = ThemeData.dark(useMaterial3: true).textTheme.apply(
-      fontFamily: 'General Sans',
-    );
+    final TextTheme base = ThemeData.dark(
+      useMaterial3: true,
+    ).textTheme.apply(fontFamily: 'General Sans');
     return base
-        .apply(
-          bodyColor: AppColors.textPrimary,
-          displayColor: AppColors.textPrimary,
-        )
+        .apply(bodyColor: AppColors.textPrimary, displayColor: AppColors.textPrimary)
         .copyWith(
           displaySmall: base.displaySmall?.copyWith(
             fontWeight: FontWeight.w700,
@@ -60,15 +57,9 @@ class AppTheme {
             fontWeight: FontWeight.w700,
             letterSpacing: -0.6,
           ),
-          titleMedium: base.titleMedium?.copyWith(
-            fontWeight: FontWeight.w600,
-            letterSpacing: -0.2,
-          ),
+          titleMedium: base.titleMedium?.copyWith(fontWeight: FontWeight.w600, letterSpacing: -0.2),
           bodyMedium: base.bodyMedium?.copyWith(height: 1.4),
-          labelSmall: base.labelSmall?.copyWith(
-            fontWeight: FontWeight.w500,
-            letterSpacing: 0.2,
-          ),
+          labelSmall: base.labelSmall?.copyWith(fontWeight: FontWeight.w500, letterSpacing: 0.2),
         );
   }
 
@@ -83,11 +74,7 @@ class AppTheme {
       textTheme: text,
       splashFactory: NoSplash.splashFactory,
       highlightColor: Colors.transparent,
-      dividerTheme: const DividerThemeData(
-        color: AppColors.border,
-        thickness: 1,
-        space: 1,
-      ),
+      dividerTheme: const DividerThemeData(color: AppColors.border, thickness: 1, space: 1),
       colorScheme: const ColorScheme.dark(
         primary: AppColors.accent,
         onPrimary: Colors.white,
@@ -115,10 +102,7 @@ class AppTheme {
         filled: true,
         fillColor: AppColors.surface,
         isDense: true,
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 12,
-          vertical: 12,
-        ),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
         hintStyle: text.bodySmall?.copyWith(color: AppColors.textMuted),
         border: OutlineInputBorder(
           borderRadius: AppRadius.md,
@@ -136,5 +120,3 @@ class AppTheme {
     );
   }
 }
-
-

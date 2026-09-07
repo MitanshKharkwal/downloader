@@ -1,4 +1,4 @@
-﻿import 'dart:ui';
+import 'dart:ui';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -80,10 +80,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
                 child: const SelectableText(
                   'cd native_host && .\\register-native-host.exe --extension-id <YOUR_EXTENSION_ID>',
-                  style: TextStyle(
-                    color: AppColors.textPrimary,
-                    fontFamily: 'monospace',
-                  ),
+                  style: TextStyle(color: AppColors.textPrimary, fontFamily: 'monospace'),
                 ),
               ),
             ],
@@ -93,28 +90,19 @@ class _HomeScreenState extends State<HomeScreen> {
               onPressed: () {
                 Clipboard.setData(
                   const ClipboardData(
-                    text:
-                        'cd native_host && .\\register-native-host.exe --extension-id ',
+                    text: 'cd native_host && .\\register-native-host.exe --extension-id ',
                   ),
                 );
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Command copied!')),
-                );
+                ScaffoldMessenger.of(
+                  context,
+                ).showSnackBar(const SnackBar(content: Text('Command copied!')));
               },
-              child: const Text(
-                'Copy Command',
-                style: TextStyle(color: AppColors.accent),
-              ),
+              child: const Text('Copy Command', style: TextStyle(color: AppColors.accent)),
             ),
             ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.accent,
-              ),
+              style: ElevatedButton.styleFrom(backgroundColor: AppColors.accent),
               onPressed: () => Navigator.pop(context),
-              child: const Text(
-                'Got it',
-                style: TextStyle(color: AppColors.textPrimary),
-              ),
+              child: const Text('Got it', style: TextStyle(color: AppColors.textPrimary)),
             ),
           ],
         );
@@ -202,10 +190,7 @@ class _HomeScreenState extends State<HomeScreen> {
             final double curve = Curves.easeOutCubic.transform(animation.value);
             return Opacity(
               opacity: curve,
-              child: Transform.scale(
-                scale: 0.95 + (0.05 * curve),
-                child: child,
-              ),
+              child: Transform.scale(scale: 0.95 + (0.05 * curve), child: child),
             );
           },
     );
@@ -229,27 +214,26 @@ class _HomeScreenState extends State<HomeScreen> {
                 borderRadius: AppRadius.lg,
               ),
               child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              Text('Settings', style: Theme.of(context).textTheme.titleMedium),
-              const SizedBox(height: 8),
-              Text(
-                'Download location, bandwidth limits and connection settings would live here.',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: AppColors.textMuted,
-                  height: 1.5,
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text('Settings', style: Theme.of(context).textTheme.titleMedium),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Download location, bandwidth limits and connection settings would live here.',
+                      style: Theme.of(
+                        context,
+                      ).textTheme.bodySmall?.copyWith(color: AppColors.textMuted, height: 1.5),
+                    ),
+                  ],
                 ),
-              ),
-            ],
-          ),
-        ),
               ),
             ),
           ),
         ),
+      ),
     );
   }
 
@@ -275,77 +259,71 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
             child: LayoutBuilder(
-            builder: (BuildContext context, BoxConstraints constraints) {
-              final bool collapsed = constraints.maxWidth < 900;
-              final bool compact = constraints.maxWidth < 760;
+              builder: (BuildContext context, BoxConstraints constraints) {
+                final bool collapsed = constraints.maxWidth < 900;
+                final bool compact = constraints.maxWidth < 760;
 
-              return Stack(
-                children: <Widget>[
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: <Widget>[
-                      Sidebar(
-                        selected: _selectedNav,
-                        counts: _counts(),
-                        collapsed: collapsed,
-                        onSelect: (int index) {
-                          if (index == _selectedNav) return;
-                          _selectedNav = index;
-                          _resyncList();
-                        },
-                        onNewDownload: _addTask,
-                        onSettings: _openSettings,
-                      ),
-                      Expanded(child: _buildMain(compact)),
-                    ],
-                  ),
-                  AnimatedPositioned(
-                    duration: AppTheme.medium,
-                    curve: Curves.easeOutCubic,
-                    top: _isConnected ? -60 : 0,
-                    left: 0,
-                    right: 0,
-                    height: 48,
-                    child: Container(
-                      alignment: Alignment.center,
-                      decoration: const BoxDecoration(
-                        color: AppColors.danger,
-                        boxShadow: <BoxShadow>[
-                          BoxShadow(
-                            color: Colors.black26,
-                            blurRadius: 8,
-                            offset: Offset(0, 4),
-                          ),
-                        ],
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: <Widget>[
-                          Icon(
-                            PhosphorIcons.warningCircle(
-                              PhosphorIconsStyle.fill,
-                            ),
-                            color: Colors.white,
-                            size: 20,
-                          ),
-                          const SizedBox(width: 8),
-                          const Text(
-                            'Daemon disconnected. Retrying connection...',
-                            style: TextStyle(
+                return Stack(
+                  children: <Widget>[
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: <Widget>[
+                        Sidebar(
+                          selected: _selectedNav,
+                          counts: _counts(),
+                          collapsed: collapsed,
+                          onSelect: (int index) {
+                            if (index == _selectedNav) return;
+                            _selectedNav = index;
+                            _resyncList();
+                          },
+                          onNewDownload: _addTask,
+                          onSettings: _openSettings,
+                        ),
+                        Expanded(child: _buildMain(compact)),
+                      ],
+                    ),
+                    AnimatedPositioned(
+                      duration: AppTheme.medium,
+                      curve: Curves.easeOutCubic,
+                      top: _isConnected ? -60 : 0,
+                      left: 0,
+                      right: 0,
+                      height: 48,
+                      child: Container(
+                        alignment: Alignment.center,
+                        decoration: const BoxDecoration(
+                          color: AppColors.danger,
+                          boxShadow: <BoxShadow>[
+                            BoxShadow(color: Colors.black26, blurRadius: 8, offset: Offset(0, 4)),
+                          ],
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: <Widget>[
+                            Icon(
+                              PhosphorIcons.warningCircle(PhosphorIconsStyle.fill),
                               color: Colors.white,
-                              fontWeight: FontWeight.w500,
-                              fontSize: 13,
+                              size: 20,
                             ),
-                          ),
-                        ],
+                            const SizedBox(width: 8),
+                            const Text(
+                              'Daemon disconnected. Retrying connection...',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w500,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
-                  ),
-                ],
-              );
-            },
-          ),
+                  ],
+                );
+              },
             ),
+          ),
         ),
       ),
     );
@@ -482,17 +460,12 @@ class _Header extends StatelessWidget {
                   title,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: text.headlineMedium?.copyWith(
-                    fontSize: compact ? 22 : 26,
-                  ),
+                  style: text.headlineMedium?.copyWith(fontSize: compact ? 22 : 26),
                 ),
                 const SizedBox(height: 5),
                 Text(
                   subtitle,
-                  style: text.bodySmall?.copyWith(
-                    color: AppColors.textMuted,
-                    fontSize: 12,
-                  ),
+                  style: text.bodySmall?.copyWith(color: AppColors.textMuted, fontSize: 12),
                 ),
               ],
             ),
@@ -511,10 +484,7 @@ class _Header extends StatelessWidget {
                   size: 16,
                   color: AppColors.textMuted,
                 ),
-                prefixIconConstraints: const BoxConstraints(
-                  minWidth: 36,
-                  minHeight: 36,
-                ),
+                prefixIconConstraints: const BoxConstraints(minWidth: 36, minHeight: 36),
               ),
             ),
           ),
@@ -523,6 +493,3 @@ class _Header extends StatelessWidget {
     );
   }
 }
-
-
-
