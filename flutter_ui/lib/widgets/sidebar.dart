@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:phosphor_icons/phosphor_icons.dart';
 
 import '../models/download_task.dart';
@@ -363,3 +363,5 @@ class _SidebarTileState extends State<_SidebarTile> {
     );
   }
 }
+
+

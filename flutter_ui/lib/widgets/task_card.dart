@@ -589,10 +589,12 @@ class _ActionsState extends State<ActionsWidget> {
 
     if (status == TaskStatus.queued || status == TaskStatus.downloading) {
       IconData pIcon = PhosphorIcons.arrowsDownUp(PhosphorIconsStyle.light);
-      if (widget.task.priority == 2)
+      if (widget.task.priority == 2) {
         pIcon = PhosphorIcons.caretDoubleUp(PhosphorIconsStyle.light);
-      if (widget.task.priority == 0)
+      }
+      if (widget.task.priority == 0) {
         pIcon = PhosphorIcons.caretDoubleDown(PhosphorIconsStyle.light);
+      }
 
       buttons.add(
         PopupMenuButton<int>(

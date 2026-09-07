@@ -20,8 +20,9 @@ class _AddUrlDialogState extends State<AddUrlDialog> {
     final trimmed = text.trim();
     if (trimmed.isEmpty) return false;
     if (trimmed.startsWith('magnet:?')) return true;
-    if (trimmed.startsWith('http://') || trimmed.startsWith('https://'))
+    if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
       return true;
+    }
     return false;
   }
 
@@ -79,7 +80,7 @@ class _AddUrlDialogState extends State<AddUrlDialog> {
               enabled: !_isLoading,
               style: text.bodyMedium?.copyWith(color: AppColors.textPrimary),
               decoration: InputDecoration(
-                hintText: 'Paste URL or magnet link…',
+                hintText: 'Paste URL or magnet linkâ€¦',
                 hintStyle: const TextStyle(color: AppColors.textMuted),
                 filled: true,
                 fillColor: AppColors.background,
@@ -120,7 +121,7 @@ class _AddUrlDialogState extends State<AddUrlDialog> {
               },
               onSubmitted: (_) => _isButtonEnabled ? _submit() : null,
             ),
-            // Inline error row — dialog stays open on failure, user keeps their typed URL
+            // Inline error row â€” dialog stays open on failure, user keeps their typed URL
             AnimatedSize(
               duration: const Duration(milliseconds: 180),
               curve: Curves.easeOut,
@@ -229,3 +230,5 @@ class _AddUrlDialogState extends State<AddUrlDialog> {
     );
   }
 }
+
+

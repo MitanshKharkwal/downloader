@@ -1,3 +1,4 @@
+﻿import 'dart:ui';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -185,7 +186,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ) {
             return AddUrlDialog(
               onAdd: (String url) async {
-                // onAdd is now async — throws on error so dialog can show it inline
+                // onAdd is now async â€” throws on error so dialog can show it inline
                 await _ipcClient.addUrl(url);
                 await _fetchTasks();
               },
@@ -215,12 +216,19 @@ class _HomeScreenState extends State<HomeScreen> {
       context: context,
       barrierColor: Colors.black54,
       builder: (BuildContext context) => Dialog(
-        backgroundColor: AppColors.surface,
-        shape: RoundedRectangleBorder(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        child: ClipRRect(
           borderRadius: AppRadius.lg,
-          side: const BorderSide(color: AppColors.border),
-        ),
-        child: Padding(
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+            child: Container(
+              decoration: BoxDecoration(
+                color: AppColors.surface.withValues(alpha: 0.6),
+                border: Border.all(color: AppColors.border),
+                borderRadius: AppRadius.lg,
+              ),
+              child: Padding(
           padding: const EdgeInsets.all(24),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -238,7 +246,10 @@ class _HomeScreenState extends State<HomeScreen> {
             ],
           ),
         ),
-      ),
+              ),
+            ),
+          ),
+        ),
     );
   }
 
@@ -251,7 +262,19 @@ class _HomeScreenState extends State<HomeScreen> {
       child: Focus(
         autofocus: true,
         child: Scaffold(
-          body: LayoutBuilder(
+          backgroundColor: Colors.transparent,
+          body: Container(
+            decoration: const BoxDecoration(
+              gradient: RadialGradient(
+                center: Alignment.topCenter,
+                radius: 1.5,
+                colors: <Color>[
+                  Color(0xFF1E1E26), // very subtle warm purple/blue tint at top
+                  AppColors.background,
+                ],
+              ),
+            ),
+            child: LayoutBuilder(
             builder: (BuildContext context, BoxConstraints constraints) {
               final bool collapsed = constraints.maxWidth < 900;
               final bool compact = constraints.maxWidth < 760;
@@ -322,6 +345,7 @@ class _HomeScreenState extends State<HomeScreen> {
               );
             },
           ),
+            ),
         ),
       ),
     );
@@ -344,7 +368,7 @@ class _HomeScreenState extends State<HomeScreen> {
           title: item.label,
           subtitle: _visible.isEmpty
               ? 'Nothing here yet'
-              : '${_visible.length} item${_visible.length == 1 ? '' : 's'} · $activeCount active',
+              : '${_visible.length} item${_visible.length == 1 ? '' : 's'} Â· $activeCount active',
           controller: _searchController,
           onQueryChanged: (String value) {
             _query = value;
@@ -410,7 +434,7 @@ class _HomeScreenState extends State<HomeScreen> {
         actionLabel: 'New Download',
       );
     }
-    // 3. Truly empty — no tasks at all
+    // 3. Truly empty â€” no tasks at all
     return EmptyState(
       title: 'No downloads yet',
       subtitle: 'Click the button below or press Ctrl+N to add a new download.',
@@ -481,7 +505,7 @@ class _Header extends StatelessWidget {
               onChanged: onQueryChanged,
               style: text.bodySmall?.copyWith(fontSize: 13),
               decoration: InputDecoration(
-                hintText: 'Search downloads…',
+                hintText: 'Search downloadsâ€¦',
                 prefixIcon: Icon(
                   PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.light),
                   size: 16,
@@ -499,3 +523,6 @@ class _Header extends StatelessWidget {
     );
   }
 }
+
+
+

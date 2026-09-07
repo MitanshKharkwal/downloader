@@ -93,3 +93,14 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+
+  fonts:
+    - family: General Sans
+      fonts:
+        - asset: assets/fonts/GeneralSans-Regular.ttf
+        - asset: assets/fonts/GeneralSans-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/GeneralSans-Semibold.ttf
+          weight: 600
+        - asset: assets/fonts/GeneralSans-Bold.ttf
+          weight: 700

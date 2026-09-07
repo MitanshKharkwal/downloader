@@ -1,20 +1,19 @@
-import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+﻿import 'package:flutter/material.dart';
 
 /// Central design tokens. Change the accent here and it propagates everywhere.
 class AppColors {
   const AppColors._();
 
-  static const Color background = Color(0xFF0E0E10);
-  static const Color surface = Color(0xFF1C1C1F);
-  static const Color surfaceHover = Color(0xFF232327);
-  static const Color surfaceActive = Color(0xFF26262B);
-  static const Color border = Color(0xFF2A2A2A);
-  static const Color borderStrong = Color(0xFF35353A);
+  static const Color background = Color(0xFF121214);
+  static const Color surface = Color(0xFF1E1E21);
+  static const Color surfaceHover = Color(0xFF25252A);
+  static const Color surfaceActive = Color(0xFF28282D);
+  static const Color border = Color(0xFF2D2D32);
+  static const Color borderStrong = Color(0xFF3F3F46);
 
-  static const Color textPrimary = Color(0xFFF4F4F5);
+  static const Color textPrimary = Color(0xFFEDEDF0);
   static const Color textSecondary = Color(0xFFA1A1AA);
-  static const Color textMuted = Color(0xFF6B6B75);
+  static const Color textMuted = Color(0xFF71717A);
 
   static const Color accent = Color(0xFF5B7CFA);
   static const Color accentHover = Color(0xFF6F8CFF);
@@ -31,9 +30,9 @@ class AppColors {
 class AppRadius {
   const AppRadius._();
 
-  static const BorderRadius sm = BorderRadius.all(Radius.circular(6));
-  static const BorderRadius md = BorderRadius.all(Radius.circular(8));
-  static const BorderRadius lg = BorderRadius.all(Radius.circular(12));
+  static const BorderRadius sm = BorderRadius.all(Radius.circular(16));
+  static const BorderRadius md = BorderRadius.all(Radius.circular(16));
+  static const BorderRadius lg = BorderRadius.all(Radius.circular(16));
   static const BorderRadius pill = BorderRadius.all(Radius.circular(999));
 }
 
@@ -44,8 +43,8 @@ class AppTheme {
   static const Duration medium = Duration(milliseconds: 260);
 
   static TextTheme _textTheme() {
-    final TextTheme base = GoogleFonts.interTextTheme(
-      ThemeData.dark(useMaterial3: true).textTheme,
+    final TextTheme base = ThemeData.dark(useMaterial3: true).textTheme.apply(
+      fontFamily: 'General Sans',
     );
     return base
         .apply(
@@ -137,3 +136,5 @@ class AppTheme {
     );
   }
 }
+
+
