@@ -15,6 +15,7 @@ from __future__ import annotations
 import os
 import threading
 import time
+import typing
 
 try:
     import libtorrent as lt
@@ -26,7 +27,7 @@ except ImportError:
     # than crash the whole app on import, degrade gracefully: HTTP
     # downloads keep working, and any torrent/magnet add fails with a
     # clear error instead of a stack trace. See android_app/README.md.
-    lt = None
+    lt = None  # type: ignore
     LIBTORRENT_AVAILABLE = False
 
 from .events import EventEmitter
@@ -71,11 +72,11 @@ class TorrentSession:
             "alert_mask": lt.alert.category_t.status_notification
             | lt.alert.category_t.error_notification,
         }
-        self._session = lt.session(settings)
+        self._session = lt.session(settings)  # type: ignore
 
     @property
-    def raw(self) -> lt.session:
-        return self._session
+    def raw(self) -> lt.session:  # type: ignore
+        return self._session  # type: ignore
 
     def shutdown(self) -> None:
         # Let libtorrent flush resume data / close connections cleanly.

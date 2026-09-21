@@ -165,7 +165,7 @@ def _make_handler(manager: DownloadManager, token: str):
                         self._send_json(200, {"ok": True, "id": task.id})
 
                     elif method == "fetch_video_info":
-                        import yt_dlp
+                        import yt_dlp  # type: ignore
 
                         url = args.get("url")
                         ydl_opts = {"quiet": True, "no_warnings": True}

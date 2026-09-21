@@ -53,8 +53,8 @@ def main():
         def clipboard_monitor():
             import threading
 
-            import pyperclip
-            from win11toast import toast
+            import pyperclip  # type: ignore
+            from win11toast import toast  # type: ignore
 
             last_clipboard = pyperclip.paste().strip()
             active_toast_thread = None

@@ -124,8 +124,8 @@ class DownloadManager:
         )
         self._scheduler_thread.start()
 
-        self._urgent_task_id = None
-        self._paused_for_urgent_task_ids = set()
+        self._urgent_task_id: str | None = None
+        self._paused_for_urgent_task_ids: set[str] = set()
 
     # -- public API --------------------------------------------------------
 
@@ -343,7 +343,7 @@ class DownloadManager:
                 if task.status == DownloadStatus.COMPLETED:
                     _cleanup_offline_task(task)
                 task.status = DownloadStatus.QUEUED
-                task.error_message = None
+                task.error_message = ""
                 task.downloaded_bytes = 0
                 task.total_bytes = 0
                 task.completed_at = None
@@ -501,7 +501,7 @@ class DownloadManager:
             # Feature 6: Metered connection awareness
             is_metered = False
             try:
-                from winrt.windows.networking.connectivity import (
+                from winrt.windows.networking.connectivity import (  # type: ignore
                     NetworkCostType,
                     NetworkInformation,
                 )
@@ -593,6 +593,7 @@ class DownloadManager:
 
             # Instantiate engine and register it inside the lock so cancel()
             # knows it exists before we even start it.
+            engine: Any = None
             if next_task.type == DownloadType.HTTP:
                 engine = HttpDownload(
                     next_task,
@@ -618,6 +619,7 @@ class DownloadManager:
         with self._lock:
             task.status = DownloadStatus.CONNECTING
             task.speed_bps = 0.0
+            engine: Any = None
             if task.type == DownloadType.HTTP:
                 engine = HttpDownload(
                     task,
@@ -684,7 +686,7 @@ class DownloadManager:
                     try:
                         import os
 
-                        from win11toast import toast
+                        from win11toast import toast  # type: ignore
 
                         res = toast(
                             "Download Completed",
@@ -712,8 +714,8 @@ class DownloadManager:
                     with self._lock:
                         t = self._tasks.get(tid)
                         should_resume = t and getattr(t, "was_paused_for_urgent", False)
-                        if should_resume:
-                            t.was_paused_for_urgent = False
+                        if should_resume and t:
+                            setattr(t, "was_paused_for_urgent", False)
                     if should_resume:
                         self.resume(tid)
                 if hasattr(self, "_paused_for_urgent_task_ids"):

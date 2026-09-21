@@ -2,7 +2,7 @@ import os
 import threading
 import time
 
-import yt_dlp
+import yt_dlp  # type: ignore
 
 from core.events import EventEmitter
 from core.models import DownloadStatus, DownloadTask
@@ -14,7 +14,7 @@ class VideoDownload:
     def __init__(self, task: DownloadTask, events: EventEmitter):
         self.task = task
         self.events = events
-        self._thread = None
+        self._thread: threading.Thread | None = None
         self._cancel_event = threading.Event()
         self._pause_event = threading.Event()
         self._pause_requested = False
