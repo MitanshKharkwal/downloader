@@ -253,7 +253,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 center: Alignment.topCenter,
                 radius: 1.5,
                 colors: <Color>[
-                  Color(0xFF1E1E26), // very subtle warm purple/blue tint at top
+                  Color(0xFF1A1A22), // very subtle warm purple/blue tint at top
                   AppColors.background,
                 ],
               ),
@@ -462,10 +462,10 @@ class _Header extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: text.headlineMedium?.copyWith(fontSize: compact ? 22 : 26),
                 ),
-                const SizedBox(height: 5),
+                const SizedBox(height: 6),
                 Text(
                   subtitle,
-                  style: text.bodySmall?.copyWith(color: AppColors.textMuted, fontSize: 12),
+                  style: text.bodySmall?.copyWith(color: AppColors.textMuted, fontSize: 11),
                 ),
               ],
             ),

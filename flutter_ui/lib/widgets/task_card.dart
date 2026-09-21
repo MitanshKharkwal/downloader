@@ -34,9 +34,8 @@ class TaskCard extends StatefulWidget {
   State<TaskCard> createState() => _TaskCardState();
 }
 
-class _TaskCardState extends State<TaskCard> with SingleTickerProviderStateMixin {
+class _TaskCardState extends State<TaskCard> {
   bool _hovered = false;
-  late final AnimationController _pulseController;
 
   /// Optimistic status — flips immediately on user action, reverts on RPC failure.
   TaskStatus? _optimisticStatus;
@@ -49,33 +48,12 @@ class _TaskCardState extends State<TaskCard> with SingleTickerProviderStateMixin
   TaskStatus get _displayStatus => _optimisticStatus ?? widget.task.status;
 
   @override
-  void initState() {
-    super.initState();
-    _pulseController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 250),
-    );
-  }
-
-  @override
   void didUpdateWidget(TaskCard oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.task.status != TaskStatus.completed &&
-        widget.task.status == TaskStatus.completed) {
-      _pulseController.forward(from: 0.0).then((_) {
-        if (mounted) _pulseController.reverse();
-      });
-    }
     // Clear optimistic once backend confirms
     if (_optimisticStatus != null && widget.task.status == _optimisticStatus) {
       _optimisticStatus = null;
     }
-  }
-
-  @override
-  void dispose() {
-    _pulseController.dispose();
-    super.dispose();
   }
 
   Future<void> _handlePause() async {
@@ -114,8 +92,8 @@ class _TaskCardState extends State<TaskCard> with SingleTickerProviderStateMixin
       onExit: (_) => setState(() => _hovered = false),
       child: AnimatedContainer(
         duration: AppTheme.fast,
-        margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+        margin: const EdgeInsets.only(bottom: 2),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
         decoration: BoxDecoration(
           color: isError
               ? Color.alphaBlend(AppColors.dangerSoft, AppColors.surface)
@@ -128,18 +106,13 @@ class _TaskCardState extends State<TaskCard> with SingleTickerProviderStateMixin
                 ? AppColors.danger.withValues(alpha: 0.45)
                 : _hovered
                 ? AppColors.borderStrong
-                : AppColors.border,
+                : Colors.transparent,
           ),
         ),
         child: AnimatedOpacity(
           duration: AppTheme.fast,
           opacity: dimmed ? 0.55 : 1,
-          child: ScaleTransition(
-            scale: Tween<double>(
-              begin: 1.0,
-              end: 1.04,
-            ).animate(CurvedAnimation(parent: _pulseController, curve: Curves.easeOutCubic)),
-            child: Row(
+          child: Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: <Widget>[
                 _FileIcon(task: task, displayStatus: status),
@@ -216,6 +189,7 @@ class _TaskCardState extends State<TaskCard> with SingleTickerProviderStateMixin
                                     style: text.labelSmall?.copyWith(
                                       color: AppColors.textMuted,
                                       fontSize: 11,
+                                      fontFamily: AppFonts.mono,
                                       fontFeatures: const <FontFeature>[
                                         FontFeature.tabularFigures(),
                                       ],
@@ -247,7 +221,6 @@ class _TaskCardState extends State<TaskCard> with SingleTickerProviderStateMixin
             ),
           ),
         ),
-      ),
     );
   }
 }
@@ -273,8 +246,8 @@ class _FileIcon extends StatelessWidget {
       children: <Widget>[
         if (displayStatus.isActive || isPaused || task.progress > 0)
           SizedBox(
-            width: 44,
-            height: 44,
+            width: 38,
+            height: 38,
             child: TweenAnimationBuilder<double>(
               tween: Tween<double>(begin: task.progress, end: task.progress),
               duration: const Duration(milliseconds: 950),
@@ -285,7 +258,7 @@ class _FileIcon extends StatelessWidget {
                   opacity: isPaused ? 0.35 : 1.0,
                   child: CircularProgressIndicator(
                     value: value.clamp(0.0, 1.0),
-                    strokeWidth: 2.5,
+                    strokeWidth: 2,
                     backgroundColor: Colors.transparent,
                     color: isPaused ? AppColors.textMuted : displayStatus.color,
                   ),
@@ -294,12 +267,11 @@ class _FileIcon extends StatelessWidget {
             ),
           ),
         Container(
-          height: 38,
-          width: 38,
+          height: 32,
+          width: 32,
           decoration: BoxDecoration(
-            color: tint.withValues(alpha: 0.12),
+            color: tint.withValues(alpha: 0.10),
             borderRadius: AppRadius.sm,
-            border: Border.all(color: tint.withValues(alpha: 0.22)),
           ),
           child: AnimatedSwitcher(
             duration: const Duration(milliseconds: 250),
@@ -315,7 +287,7 @@ class _FileIcon extends StatelessWidget {
             child: Icon(
               task.category.icon,
               key: ValueKey<TaskStatus>(displayStatus),
-              size: 18,
+              size: 15,
               color: tint,
             ),
           ),
@@ -338,6 +310,7 @@ class _Stats extends StatelessWidget {
     TextStyle? style(Color color) => text.labelSmall?.copyWith(
       color: color,
       fontSize: 11.5,
+      fontFamily: AppFonts.mono,
       fontFeatures: const <FontFeature>[FontFeature.tabularFigures()],
     );
 

@@ -23,71 +23,59 @@ class EmptyState extends StatelessWidget {
   Widget build(BuildContext context) {
     final TextTheme text = Theme.of(context).textTheme;
 
-    return TweenAnimationBuilder<double>(
-      tween: Tween<double>(begin: 0.0, end: 1.0),
-      duration: const Duration(milliseconds: 220),
-      curve: Curves.easeOutCubic,
-      builder: (BuildContext context, double val, Widget? child) {
-        return Opacity(
-          opacity: val,
-          child: Transform.scale(scale: 0.97 + (0.03 * val), child: child),
-        );
-      },
-      child: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 380),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: <Widget>[
-              Container(
-                height: 92,
-                width: 92,
-                decoration: BoxDecoration(
-                  color: AppColors.surface,
-                  borderRadius: AppRadius.lg,
-                  border: Border.all(color: AppColors.border),
-                ),
-                child: Icon(
-                  icon ?? PhosphorIcons.tray(PhosphorIconsStyle.light),
-                  size: 40,
-                  color: AppColors.textMuted,
-                ),
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 320),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: <Widget>[
+            Container(
+              height: 56,
+              width: 56,
+              decoration: BoxDecoration(
+                color: AppColors.surface,
+                borderRadius: AppRadius.md,
               ),
-              const SizedBox(height: 22),
-              Text(
-                title,
-                textAlign: TextAlign.center,
-                style: text.titleMedium?.copyWith(fontSize: 17, color: AppColors.textPrimary),
+              child: Icon(
+                icon ?? PhosphorIcons.tray(PhosphorIconsStyle.light),
+                size: 24,
+                color: AppColors.textMuted,
               ),
-              const SizedBox(height: 8),
-              Text(
-                subtitle,
-                textAlign: TextAlign.center,
-                style: text.bodySmall?.copyWith(color: AppColors.textMuted, height: 1.5),
-              ),
-              if (onAction != null && actionLabel != null) ...<Widget>[
-                const SizedBox(height: 20),
-                _GhostButton(label: actionLabel!, onPressed: onAction!),
-              ],
+            ),
+            const SizedBox(height: 18),
+            Text(
+              title,
+              textAlign: TextAlign.center,
+              style: text.titleMedium?.copyWith(fontSize: 15, color: AppColors.textPrimary),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              subtitle,
+              textAlign: TextAlign.center,
+              style: text.bodySmall?.copyWith(color: AppColors.textMuted, height: 1.5),
+            ),
+            if (onAction != null && actionLabel != null) ...<Widget>[
+              const SizedBox(height: 16),
+              _TextAction(label: actionLabel!, onPressed: onAction!),
             ],
-          ),
+          ],
         ),
       ),
     );
   }
 }
 
-class _GhostButton extends StatefulWidget {
-  const _GhostButton({required this.label, required this.onPressed});
+class _TextAction extends StatefulWidget {
+  const _TextAction({required this.label, required this.onPressed});
 
   final String label;
   final VoidCallback onPressed;
 
   @override
-  State<_GhostButton> createState() => _GhostButtonState();
+  State<_TextAction> createState() => _TextActionState();
 }
 
-class _GhostButtonState extends State<_GhostButton> {
+class _TextActionState extends State<_TextAction> {
   bool _hovered = false;
 
   @override
@@ -98,34 +86,26 @@ class _GhostButtonState extends State<_GhostButton> {
       onExit: (_) => setState(() => _hovered = false),
       child: GestureDetector(
         onTap: widget.onPressed,
-        child: AnimatedContainer(
-          duration: AppTheme.fast,
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-          decoration: BoxDecoration(
-            color: _hovered ? AppColors.accent : AppColors.accentSoft,
-            borderRadius: AppRadius.md,
-            border: Border.all(color: _hovered ? AppColors.accent : AppColors.borderStrong),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              Icon(
-                PhosphorIcons.plus(PhosphorIconsStyle.light),
-                size: 16,
-                color: _hovered ? Colors.white : AppColors.textPrimary,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Icon(
+              PhosphorIcons.plus(PhosphorIconsStyle.light),
+              size: 14,
+              color: _hovered ? AppColors.accentHover : AppColors.accent,
+            ),
+            const SizedBox(width: 5),
+            Text(
+              widget.label,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                fontWeight: FontWeight.w500,
+                color: _hovered ? AppColors.accentHover : AppColors.accent,
               ),
-              const SizedBox(width: 8),
-              Text(
-                widget.label,
-                style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                  fontWeight: FontWeight.w600,
-                  color: _hovered ? Colors.white : AppColors.textPrimary,
-                ),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
   }
 }
+

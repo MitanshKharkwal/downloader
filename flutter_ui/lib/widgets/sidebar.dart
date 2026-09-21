@@ -76,7 +76,7 @@ class Sidebar extends StatelessWidget {
     return Container(
       width: collapsed ? 72 : 248,
       decoration: const BoxDecoration(
-        color: AppColors.background,
+        color: AppColors.surfaceElevated,
         border: Border(right: BorderSide(color: AppColors.border)),
       ),
       child: Column(
@@ -92,45 +92,27 @@ class Sidebar extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.only(left: 24, bottom: 8),
               child: Text(
-                'LIBRARY',
+                'Library',
                 style: Theme.of(context).textTheme.labelSmall?.copyWith(
                   color: AppColors.textMuted,
-                  fontSize: 10,
-                  letterSpacing: 1.1,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w500,
                 ),
               ),
             ),
           Expanded(
             child: SingleChildScrollView(
               padding: const EdgeInsets.symmetric(horizontal: 12),
-              child: Stack(
-                children: <Widget>[
-                  AnimatedPositioned(
-                    duration: const Duration(milliseconds: 200),
-                    curve: Curves.easeInOutCubic,
-                    top: selected * 38.0,
-                    left: 0,
-                    right: 0,
-                    height: 36,
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: AppColors.surfaceActive,
-                        borderRadius: AppRadius.sm,
-                      ),
-                    ),
-                  ),
-                  Column(
-                    children: List<Widget>.generate(kNavItems.length, (int index) {
-                      return _SidebarTile(
-                        item: kNavItems[index],
-                        selected: index == selected,
-                        count: counts[index] ?? 0,
-                        collapsed: collapsed,
-                        onTap: () => onSelect(index),
-                      );
-                    }),
-                  ),
-                ],
+              child: Column(
+                children: List<Widget>.generate(kNavItems.length, (int index) {
+                  return _SidebarTile(
+                    item: kNavItems[index],
+                    selected: index == selected,
+                    count: counts[index] ?? 0,
+                    collapsed: collapsed,
+                    onTap: () => onSelect(index),
+                  );
+                }),
               ),
             ),
           ),
@@ -159,17 +141,13 @@ class _Brand extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final Widget mark = Container(
-      height: 26,
-      width: 26,
+      height: 24,
+      width: 24,
       decoration: BoxDecoration(
         borderRadius: AppRadius.sm,
-        gradient: const LinearGradient(
-          colors: <Color>[AppColors.accent, Color(0xFF8B6CFA)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
+        color: AppColors.accent,
       ),
-      child: Icon(PhosphorIcons.arrowDown(PhosphorIconsStyle.light), size: 16, color: Colors.white),
+      child: Icon(PhosphorIcons.arrowDown(PhosphorIconsStyle.light), size: 14, color: Colors.white),
     );
 
     return Padding(
@@ -217,7 +195,7 @@ class _NewDownloadButtonState extends State<_NewDownloadButton> {
           onTap: widget.onPressed,
           child: AnimatedContainer(
             duration: AppTheme.fast,
-            height: 38,
+            height: 36,
             alignment: Alignment.center,
             decoration: BoxDecoration(
               color: _hovered ? AppColors.accentHover : AppColors.accent,
@@ -230,7 +208,7 @@ class _NewDownloadButtonState extends State<_NewDownloadButton> {
                     children: <Widget>[
                       Icon(
                         PhosphorIcons.plus(PhosphorIconsStyle.light),
-                        size: 17,
+                        size: 16,
                         color: Colors.white,
                       ),
                       const SizedBox(width: 7),
@@ -281,7 +259,6 @@ class _SidebarTileState extends State<_SidebarTile> {
         : _hovered
         ? AppColors.textSecondary
         : AppColors.textMuted;
-    final Color bg = _hovered && !widget.selected ? AppColors.surface : Colors.transparent;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 2),
@@ -298,7 +275,15 @@ class _SidebarTileState extends State<_SidebarTile> {
               height: 36,
               padding: EdgeInsets.symmetric(horizontal: widget.collapsed ? 0 : 10),
               alignment: widget.collapsed ? Alignment.center : Alignment.centerLeft,
-              decoration: BoxDecoration(color: bg, borderRadius: AppRadius.sm),
+              decoration: BoxDecoration(
+                color: Colors.transparent,
+                borderRadius: AppRadius.sm,
+                border: widget.selected && !widget.collapsed
+                    ? const Border(
+                        left: BorderSide(color: AppColors.accent, width: 2.5),
+                      )
+                    : null,
+              ),
               child: widget.collapsed
                   ? Icon(widget.item.icon, size: 18, color: fg)
                   : Row(
@@ -311,7 +296,7 @@ class _SidebarTileState extends State<_SidebarTile> {
                             overflow: TextOverflow.ellipsis,
                             style: text.bodyMedium?.copyWith(
                               fontSize: 13,
-                              fontWeight: widget.selected ? FontWeight.w600 : FontWeight.w500,
+                              fontWeight: widget.selected ? FontWeight.w600 : FontWeight.w400,
                               color: fg,
                             ),
                           ),
@@ -335,3 +320,4 @@ class _SidebarTileState extends State<_SidebarTile> {
     );
   }
 }
+

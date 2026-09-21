@@ -4,20 +4,21 @@ import 'package:flutter/material.dart';
 class AppColors {
   const AppColors._();
 
-  static const Color background = Color(0xFF121214);
-  static const Color surface = Color(0xFF1E1E21);
-  static const Color surfaceHover = Color(0xFF25252A);
+  static const Color background = Color(0xFF101012);
+  static const Color surface = Color(0xFF1A1A1E);
+  static const Color surfaceElevated = Color(0xFF222228);
+  static const Color surfaceHover = Color(0xFF232328);
   static const Color surfaceActive = Color(0xFF28282D);
-  static const Color border = Color(0xFF2D2D32);
-  static const Color borderStrong = Color(0xFF3F3F46);
+  static const Color border = Color(0xFF262630);
+  static const Color borderStrong = Color(0xFF3A3A44);
 
-  static const Color textPrimary = Color(0xFFEDEDF0);
-  static const Color textSecondary = Color(0xFFA1A1AA);
-  static const Color textMuted = Color(0xFF71717A);
+  static const Color textPrimary = Color(0xFFE8E8EC);
+  static const Color textSecondary = Color(0xFF9D9DAA);
+  static const Color textMuted = Color(0xFF6B6B78);
 
-  static const Color accent = Color(0xFF5B7CFA);
-  static const Color accentHover = Color(0xFF6F8CFF);
-  static const Color accentSoft = Color(0x225B7CFA);
+  static const Color accent = Color(0xFF6366F1);
+  static const Color accentHover = Color(0xFF818CF8);
+  static const Color accentSoft = Color(0x226366F1);
 
   static const Color success = Color(0xFF3FBF7F);
   static const Color danger = Color(0xFFF25C5C);
@@ -30,10 +31,17 @@ class AppColors {
 class AppRadius {
   const AppRadius._();
 
-  static const BorderRadius sm = BorderRadius.all(Radius.circular(16));
-  static const BorderRadius md = BorderRadius.all(Radius.circular(16));
-  static const BorderRadius lg = BorderRadius.all(Radius.circular(16));
+  static const BorderRadius sm = BorderRadius.all(Radius.circular(6));
+  static const BorderRadius md = BorderRadius.all(Radius.circular(10));
+  static const BorderRadius lg = BorderRadius.all(Radius.circular(14));
   static const BorderRadius pill = BorderRadius.all(Radius.circular(999));
+}
+
+class AppFonts {
+  const AppFonts._();
+
+  /// Use for numerical data: speeds, sizes, ETAs, percentages.
+  static const String mono = 'Consolas';
 }
 
 class AppTheme {
@@ -55,11 +63,11 @@ class AppTheme {
           ),
           headlineMedium: base.headlineMedium?.copyWith(
             fontWeight: FontWeight.w700,
-            letterSpacing: -0.6,
+            letterSpacing: -0.8,
           ),
           titleMedium: base.titleMedium?.copyWith(fontWeight: FontWeight.w600, letterSpacing: -0.2),
-          bodyMedium: base.bodyMedium?.copyWith(height: 1.4),
-          labelSmall: base.labelSmall?.copyWith(fontWeight: FontWeight.w500, letterSpacing: 0.2),
+          bodyMedium: base.bodyMedium?.copyWith(height: 1.4, fontWeight: FontWeight.w400),
+          labelSmall: base.labelSmall?.copyWith(fontWeight: FontWeight.w400, letterSpacing: 0.2),
         );
   }
 
@@ -105,15 +113,15 @@ class AppTheme {
         contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
         hintStyle: text.bodySmall?.copyWith(color: AppColors.textMuted),
         border: OutlineInputBorder(
-          borderRadius: AppRadius.md,
+          borderRadius: AppRadius.sm,
           borderSide: const BorderSide(color: AppColors.border),
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: AppRadius.md,
+          borderRadius: AppRadius.sm,
           borderSide: const BorderSide(color: AppColors.border),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: AppRadius.md,
+          borderRadius: AppRadius.sm,
           borderSide: const BorderSide(color: AppColors.accent),
         ),
       ),

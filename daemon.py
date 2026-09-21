@@ -21,6 +21,29 @@ def main():
     os.makedirs(DOWNLOAD_DIR, exist_ok=True)
     manager = DownloadManager(download_dir=DOWNLOAD_DIR, max_concurrent_downloads=3)
 
+    def _on_download_added(task):
+        try:
+            import ctypes
+            hwnd = ctypes.windll.user32.FindWindowW("FLUTTER_RUNNER_WIN32_WINDOW", None)
+            if hwnd:
+                ctypes.windll.user32.ShowWindow(hwnd, 9)  # SW_RESTORE
+                ctypes.windll.user32.SetForegroundWindow(hwnd)
+            else:
+                import os, subprocess, sys
+                base_dir = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
+                ui_paths = [
+                    os.path.join(base_dir, "flutter_ui.exe"),
+                    os.path.join(base_dir, "flutter_ui_bundle", "flutter_ui.exe")
+                ]
+                for path in ui_paths:
+                    if os.path.exists(path):
+                        subprocess.Popen([path])
+                        break
+        except Exception as e:
+            print(f"Error launching UI: {e}")
+
+    manager.events.on("added", _on_download_added)
+
     token = load_or_create_token(TOKEN_PATH)
     ipc = IpcServer(manager, token)
 

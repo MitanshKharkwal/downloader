@@ -190,10 +190,13 @@ class TaskListHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final TextStyle? style = Theme.of(
       context,
-    ).textTheme.labelSmall?.copyWith(color: AppColors.textMuted, fontSize: 10, letterSpacing: 0.9);
+    ).textTheme.labelSmall?.copyWith(color: AppColors.textMuted, fontSize: 10, letterSpacing: 0.5);
 
-    return Padding(
+    return Container(
       padding: const EdgeInsets.fromLTRB(42, 0, 42, 10),
+      decoration: const BoxDecoration(
+        border: Border(bottom: BorderSide(color: AppColors.border, width: 0.5)),
+      ),
       child: Row(
         children: <Widget>[
           Expanded(child: Text('NAME', style: style)),
