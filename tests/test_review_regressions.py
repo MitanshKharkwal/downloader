@@ -10,8 +10,14 @@ import pytest
 
 from core.events import EventEmitter
 from core.http_downloader import HttpDownload
-from core.manager import DownloadManager, TokenBucket, _cleanup_offline_task
-from core.models import DownloadStatus, DownloadTask, DownloadType
+from core.manager import (
+    LOW_PRIORITY_RATE_BPS,
+    DownloadManager,
+    PriorityRateLimiter,
+    TokenBucket,
+    _cleanup_offline_task,
+)
+from core.models import DownloadStatus, DownloadTask, DownloadType, Priority
 from core.paths import safe_filename
 
 
@@ -107,6 +113,47 @@ def test_bandwidth_switch_to_unlimited():
         bucket.consume(100)
 
 
+def test_low_priority_rate_limit_applies_live():
+    task = DownloadTask("https://a.invalid/file", "file", DownloadType.HTTP)
+    limiter = PriorityRateLimiter(task, TokenBucket(0))
+    assert limiter.local_limiter.rate == 0
+
+    task.priority = Priority.LOW
+    limiter.refresh()
+    assert limiter.local_limiter.rate == LOW_PRIORITY_RATE_BPS
+
+    elapsed = 0.0
+
+    def advance(seconds):
+        nonlocal elapsed
+        elapsed += seconds
+
+    limiter.local_limiter._tokens = 0
+    limiter.local_limiter._last_fill = 0
+    with (
+        patch("core.manager.time.time", side_effect=lambda: elapsed),
+        patch("core.manager.time.sleep", side_effect=advance),
+    ):
+        limiter.consume(LOW_PRIORITY_RATE_BPS // 2)
+    assert elapsed >= 0.5
+
+    task.priority = Priority.NORMAL
+    limiter.refresh()
+    assert limiter.local_limiter.rate == 0
+
+
+def test_priority_change_notifies_running_engine(manager):
+    with patch.object(manager, "_maybe_start_next"):
+        task = manager.add("https://a.invalid/file")
+    engine = Mock()
+    manager._engines[task.id] = engine
+
+    manager.set_priority(task.id, Priority.LOW)
+
+    engine.on_priority_changed.assert_called_once_with()
+    assert task.num_connections == 2
+
+
 def test_config_invalid_change_is_atomic(manager):
     original = manager.get_config()
     with pytest.raises(ValueError):
@@ -167,6 +214,7 @@ def test_retry_active_task_does_not_stop_engine(manager):
 def test_ipc_contract_and_validation(manager):
     import urllib.error
     import urllib.request
+
     from core.ipc_server import IpcServer
 
     with patch.object(manager, "_maybe_start_next"):
@@ -212,6 +260,43 @@ def test_ipc_contract_and_validation(manager):
             with pytest.raises(urllib.error.HTTPError) as error:
                 rpc(payload)
             assert error.value.code == 400
+    finally:
+        server.stop()
+
+
+def test_verified_browser_handoff_keeps_browser_download_on_early_error(tmp_path):
+    import urllib.error
+    import urllib.request
+    from types import SimpleNamespace
+
+    from core.ipc_server import IpcServer
+
+    task = DownloadTask(
+        "https://blocked.invalid/file",
+        str(tmp_path / "file"),
+        DownloadType.HTTP,
+        status=DownloadStatus.ERROR,
+        error_message="403 Client Error: Forbidden",
+    )
+    manager = SimpleNamespace(add=Mock(return_value=task), remove_task=Mock())
+    server = IpcServer(manager, "token", port=0)
+    server.start()
+    try:
+        request = urllib.request.Request(
+            f"http://127.0.0.1:{server._server.server_port}/add",
+            data=json.dumps(
+                {"source": task.source, "headers": {}, "verify": True}
+            ).encode(),
+            headers={"X-Auth-Token": "token", "Content-Type": "application/json"},
+            method="POST",
+        )
+        with pytest.raises(urllib.error.HTTPError) as error:
+            urllib.request.urlopen(request, timeout=2)
+        payload = json.loads(error.value.read())
+        assert error.value.code == 422
+        assert not payload["ok"]
+        assert "browser download was left active" in payload["error"]
+        manager.remove_task.assert_called_once_with(task.id, delete_files=True)
     finally:
         server.stop()
 
@@ -291,6 +376,30 @@ def test_download_content_is_exact(mode, http_server, tmp_path):
     assert (tmp_path / "output.bin").read_bytes() == expected
     if mode == "unknown":
         assert len(calls) == 2
+
+
+def test_low_priority_caps_an_active_http_download(http_server, tmp_path, monkeypatch):
+    monkeypatch.setattr("core.manager.LOW_PRIORITY_RATE_BPS", 128 * 1024)
+    url, expected, _ = http_server("range")
+    task = DownloadTask(url, str(tmp_path / "low.bin"), DownloadType.HTTP)
+    task.priority = Priority.LOW
+    limiter = PriorityRateLimiter(task, TokenBucket(0))
+    engine = HttpDownload(
+        task,
+        EventEmitter(),
+        num_connections=2,
+        chunk_size=32 * 1024,
+        rate_limiter=limiter,
+    )
+
+    started = time.monotonic()
+    engine.start()
+    engine._controller_thread.join(10)
+    elapsed = time.monotonic() - started
+
+    assert task.status == DownloadStatus.COMPLETED, task.error_message
+    assert (tmp_path / "low.bin").read_bytes() == expected
+    assert elapsed >= 2.5
 
 
 def test_range_ignored_fails_without_publishing(http_server, tmp_path):

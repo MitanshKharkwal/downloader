@@ -123,7 +123,17 @@ class DownloadTask {
     this.errorMessage,
     this.priority,
     this.filePath,
+    this.receivedBytes,
   });
+
+  String get errorLabel {
+    final message = errorMessage;
+    if (message == null || message.isEmpty) return 'Download failed';
+    if (message.contains('403 Client Error')) {
+      return 'Server denied access (HTTP 403). Open the link in your browser or use another source.';
+    }
+    return message;
+  }
 
   factory DownloadTask.fromJson(Map<String, dynamic> json) {
     TaskCategory category = TaskCategory.other;
@@ -186,6 +196,7 @@ class DownloadTask {
       errorMessage: json['error_message'] ?? json['error'],
       priority: json['priority'],
       filePath: json['file_path'],
+      receivedBytes: downloadedBytes,
     );
   }
 
@@ -201,6 +212,7 @@ class DownloadTask {
   final TaskCategory category;
   final String? filePath;
   final int sizeBytes;
+  final int? receivedBytes;
 
   /// 0.0 - 1.0
   double progress;
@@ -209,12 +221,14 @@ class DownloadTask {
   String? errorMessage;
   int? priority;
 
-  int get downloadedBytes => (sizeBytes * progress).round();
+  int get downloadedBytes => receivedBytes ?? (sizeBytes * progress).round();
   int get remainingBytes => (sizeBytes - downloadedBytes).clamp(0, sizeBytes);
 
   /// Seconds remaining, or null when it cannot be estimated.
   int? get etaSeconds {
-    if (!status.isActive || speedBytesPerSec <= 0) return null;
+    if (!status.isActive || speedBytesPerSec <= 0 || sizeBytes <= 0) {
+      return null;
+    }
     return (remainingBytes / speedBytesPerSec).round();
   }
 

@@ -1,0 +1,747 @@
+import 'dart:convert';
+import 'package:flutter/material.dart';
+import 'package:file_selector/file_selector.dart';
+import '../services/ipc_client.dart';
+import '../models/download_task.dart';
+
+class NewDownloadDialog extends StatefulWidget {
+  const NewDownloadDialog({super.key, required this.client});
+  final IpcClient client;
+  @override
+  State<NewDownloadDialog> createState() => _NewDownloadDialogState();
+}
+
+class _NewDownloadDialogState extends State<NewDownloadDialog> {
+  final source = TextEditingController(),
+      filename = TextEditingController(),
+      destination = TextEditingController(),
+      headers = TextEditingController(),
+      mirrors = TextEditingController();
+  String kind = 'File', quality = 'best';
+  String? error, videoTitle;
+  bool busy = false;
+  @override
+  void dispose() {
+    for (final c in [source, filename, destination, headers, mirrors]) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  Future<void> submit() async {
+    setState(() {
+      busy = true;
+      error = null;
+    });
+    try {
+      final url = source.text.trim();
+      if (url.isEmpty) {
+        throw const FormatException('Enter a link or choose a torrent file.');
+      }
+      if (kind == 'Video') {
+        await widget.client.rpc('add_video_task', {
+          'url': url,
+          'format_id': quality,
+          if (filename.text.trim().isNotEmpty) 'filename': filename.text.trim(),
+        });
+      } else {
+        final parsedHeaders = headers.text.trim().isEmpty
+            ? <String, dynamic>{}
+            : jsonDecode(headers.text);
+        if (parsedHeaders is! Map ||
+            parsedHeaders.values.any((v) => v is! String)) {
+          throw const FormatException(
+            'Headers must be a JSON object with text values.',
+          );
+        }
+        await widget.client.rpc('add_download', {
+          'source': url,
+          'headers': parsedHeaders,
+          if (filename.text.trim().isNotEmpty) 'filename': filename.text.trim(),
+          if (destination.text.trim().isNotEmpty)
+            'dest_dir': destination.text.trim(),
+          'mirrors': mirrors.text
+              .split('\n')
+              .map((s) => s.trim())
+              .where((s) => s.isNotEmpty)
+              .toList(),
+        });
+      }
+      if (mounted) Navigator.pop(context);
+    } catch (e) {
+      if (mounted) setState(() => error = '$e');
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: const Text('New download'),
+    content: SizedBox(
+      width: 510,
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            SegmentedButton<String>(
+              segments: const [
+                ButtonSegment(
+                  value: 'File',
+                  label: Text('File / torrent'),
+                  icon: Icon(Icons.link_rounded),
+                ),
+                ButtonSegment(
+                  value: 'Video',
+                  label: Text('Video / audio'),
+                  icon: Icon(Icons.play_circle_outline),
+                ),
+              ],
+              selected: {kind},
+              onSelectionChanged: busy
+                  ? null
+                  : (v) => setState(() {
+                      kind = v.first;
+                      error = null;
+                      videoTitle = null;
+                    }),
+            ),
+            const SizedBox(height: 22),
+            TextField(
+              controller: source,
+              autofocus: true,
+              enabled: !busy,
+              decoration: InputDecoration(
+                labelText: kind == 'Video'
+                    ? 'Video page URL'
+                    : 'URL, magnet link or torrent path',
+              ),
+              onChanged: (_) => setState(() => videoTitle = null),
+            ),
+            if (kind == 'File')
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  onPressed: busy
+                      ? null
+                      : () async {
+                          final file = await openFile(
+                            acceptedTypeGroups: [
+                              const XTypeGroup(
+                                label: 'Torrent',
+                                extensions: ['torrent'],
+                              ),
+                            ],
+                          );
+                          if (file != null && mounted) {
+                            setState(() => source.text = file.path);
+                          }
+                        },
+                  icon: const Icon(Icons.folder_open_outlined, size: 18),
+                  label: const Text('Choose torrent file'),
+                ),
+              ),
+            if (kind == 'Video') ...[
+              const SizedBox(height: 16),
+              DropdownButtonFormField<String>(
+                initialValue: quality,
+                isExpanded: true,
+                decoration: const InputDecoration(labelText: 'Quality'),
+                items: const [
+                  DropdownMenuItem(
+                    value: 'best',
+                    child: Text('Best available video'),
+                  ),
+                  DropdownMenuItem(
+                    value: 'worst',
+                    child: Text('Smallest video'),
+                  ),
+                  DropdownMenuItem(
+                    value: 'bestaudio',
+                    child: Text('Audio only'),
+                  ),
+                ],
+                onChanged: busy ? null : (v) => setState(() => quality = v!),
+              ),
+              TextButton(
+                onPressed: busy
+                    ? null
+                    : () async {
+                        setState(() {
+                          busy = true;
+                          error = null;
+                        });
+                        try {
+                          final info = await widget.client.rpc(
+                            'fetch_video_info',
+                            {'url': source.text.trim()},
+                          );
+                          if (mounted) {
+                            setState(() => videoTitle = info['title']);
+                          }
+                        } catch (e) {
+                          if (mounted) setState(() => error = '$e');
+                        } finally {
+                          if (mounted) setState(() => busy = false);
+                        }
+                      },
+                child: const Text('Check video title'),
+              ),
+              if (videoTitle != null) Text(videoTitle!),
+            ],
+            const SizedBox(height: 12),
+            TextField(
+              controller: filename,
+              enabled: !busy,
+              decoration: const InputDecoration(
+                labelText: 'Filename (optional)',
+              ),
+            ),
+            if (kind == 'File')
+              ExpansionTile(
+                tilePadding: EdgeInsets.zero,
+                title: const Text(
+                  'Advanced options',
+                  style: TextStyle(fontSize: 14),
+                ),
+                children: [
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: destination,
+                    enabled: !busy,
+                    decoration: InputDecoration(
+                      labelText: 'Save in (default if empty)',
+                      suffixIcon: IconButton(
+                        tooltip: 'Choose folder',
+                        onPressed: busy
+                            ? null
+                            : () async {
+                                final path = await getDirectoryPath();
+                                if (path != null && mounted) {
+                                  destination.text = path;
+                                }
+                              },
+                        icon: const Icon(Icons.folder_open_outlined),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: headers,
+                    enabled: !busy,
+                    minLines: 2,
+                    maxLines: 4,
+                    decoration: const InputDecoration(
+                      labelText: 'HTTP headers (JSON)',
+                      hintText: '{"Referer": "https://example.com"}',
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: mirrors,
+                    enabled: !busy,
+                    minLines: 2,
+                    maxLines: 4,
+                    decoration: const InputDecoration(
+                      labelText: 'Mirror URLs (one per line)',
+                      helperText:
+                          'Mirrors must serve the same file. HTTP downloads only.',
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                ],
+              ),
+            if (error != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 16),
+                child: Text(
+                  error!,
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                ),
+              ),
+          ],
+        ),
+      ),
+    ),
+    actions: [
+      TextButton(
+        onPressed: busy ? null : () => Navigator.pop(context),
+        child: const Text('Cancel'),
+      ),
+      FilledButton(
+        onPressed: busy ? null : submit,
+        child: Text(busy ? 'Please wait…' : 'Download'),
+      ),
+    ],
+  );
+}
+
+class PreferencesDialog extends StatefulWidget {
+  const PreferencesDialog({super.key, required this.client});
+  final IpcClient client;
+  @override
+  State<PreferencesDialog> createState() => _PreferencesDialogState();
+}
+
+class _PreferencesDialogState extends State<PreferencesDialog> {
+  final path = TextEditingController(),
+      concurrent = TextEditingController(),
+      bandwidth = TextEditingController();
+  final Map<String, TextEditingController> categories = {};
+  bool loading = true,
+      busy = false,
+      schedule = false,
+      metered = false,
+      extract = true,
+      startup = false;
+  int start = 2, end = 6;
+  String? error;
+  @override
+  void initState() {
+    super.initState();
+    load();
+  }
+
+  Future<void> load() async {
+    try {
+      final config = await widget.client.getConfig();
+      final settings = await widget.client.getSettings();
+      if (!mounted) return;
+      path.text = config['download_dir'] ?? '';
+      concurrent.text = '${config['max_concurrent_downloads'] ?? 3}';
+      bandwidth.text = '${(config['global_bandwidth_limit'] ?? 0) / 1024}';
+      schedule = config['scheduler_enabled'] ?? false;
+      start = config['scheduler_start_hour'] ?? 2;
+      end = config['scheduler_end_hour'] ?? 6;
+      metered = config['pause_on_metered'] ?? false;
+      extract = config['auto_extract'] ?? true;
+      startup = settings['run_on_startup'] ?? false;
+      for (final cat in [
+        'Video',
+        'Music',
+        'Programs',
+        'Documents',
+        'Compressed',
+        'Photos',
+        'Torrents',
+        'Other',
+      ]) {
+        categories[cat] = TextEditingController(
+          text: config['category_dirs']?[cat] ?? '',
+        );
+      }
+      setState(() => loading = false);
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          error = '$e';
+          loading = false;
+        });
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    for (final c in [path, concurrent, bandwidth, ...categories.values]) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  Future<void> save() async {
+    setState(() {
+      busy = true;
+      error = null;
+    });
+    try {
+      final count = int.tryParse(concurrent.text),
+          rate = double.tryParse(bandwidth.text);
+      if (count == null || count < 1 || count > 100) {
+        throw const FormatException(
+          'Concurrent downloads must be between 1 and 100.',
+        );
+      }
+      if (rate == null || !rate.isFinite || rate < 0) {
+        throw const FormatException('Enter a valid bandwidth limit.');
+      }
+      await widget.client.updateSettings({
+        'download_dir': path.text.trim(),
+        'max_concurrent_downloads': count,
+        'global_bandwidth_limit': (rate * 1024).round(),
+        'scheduler_enabled': schedule,
+        'scheduler_start_hour': start,
+        'scheduler_end_hour': end,
+        'pause_on_metered': metered,
+        'auto_extract': extract,
+        'run_on_startup': startup,
+        'category_dirs': {
+          for (final entry in categories.entries)
+            if (entry.value.text.trim().isNotEmpty)
+              entry.key: entry.value.text.trim(),
+        },
+      });
+      if (mounted) Navigator.pop(context);
+    } catch (e) {
+      if (mounted) setState(() => error = '$e');
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  Widget directory(String label, TextEditingController controller) => Padding(
+    padding: const EdgeInsets.only(bottom: 14),
+    child: TextField(
+      controller: controller,
+      decoration: InputDecoration(
+        labelText: label,
+        suffixIcon: IconButton(
+          tooltip: 'Choose folder',
+          onPressed: () async {
+            final dir = await getDirectoryPath();
+            if (dir != null && mounted) controller.text = dir;
+          },
+          icon: const Icon(Icons.folder_open_outlined),
+        ),
+      ),
+    ),
+  );
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: const Text('Settings'),
+    content: SizedBox(
+      width: 560,
+      child: loading
+          ? const SizedBox(
+              height: 180,
+              child: Center(child: CircularProgressIndicator()),
+            )
+          : SingleChildScrollView(
+              child: AbsorbPointer(
+                absorbing: busy,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    directory('Download folder', path),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: concurrent,
+                            keyboardType: TextInputType.number,
+                            decoration: const InputDecoration(
+                              labelText: 'Concurrent downloads',
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: TextField(
+                            controller: bandwidth,
+                            keyboardType: TextInputType.number,
+                            decoration: const InputDecoration(
+                              labelText: 'Limit (KB/s)',
+                              helperText: '0 = unlimited',
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 18),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Download on a schedule'),
+                      subtitle: const Text('Uses your computer’s local time'),
+                      value: schedule,
+                      onChanged: (v) => setState(() => schedule = v),
+                    ),
+                    if (schedule)
+                      Row(
+                        children: [
+                          for (final isStart in [true, false])
+                            Expanded(
+                              child: Padding(
+                                padding: const EdgeInsets.only(right: 10),
+                                child: DropdownButtonFormField<int>(
+                                  initialValue: isStart ? start : end,
+                                  decoration: InputDecoration(
+                                    labelText: isStart ? 'Start' : 'End',
+                                  ),
+                                  items: [
+                                    for (var h = 0; h < 24; h++)
+                                      DropdownMenuItem(
+                                        value: h,
+                                        child: Text(
+                                          '${h.toString().padLeft(2, '0')}:00',
+                                        ),
+                                      ),
+                                  ],
+                                  onChanged: (v) => setState(() {
+                                    if (isStart) {
+                                      start = v!;
+                                    } else {
+                                      end = v!;
+                                    }
+                                  }),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Pause on metered connections'),
+                      value: metered,
+                      onChanged: (v) => setState(() => metered = v),
+                    ),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Extract archives when finished'),
+                      value: extract,
+                      onChanged: (v) => setState(() => extract = v),
+                    ),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Run service at sign-in'),
+                      value: startup,
+                      onChanged: (v) => setState(() => startup = v),
+                    ),
+                    ExpansionTile(
+                      tilePadding: EdgeInsets.zero,
+                      title: const Text('Folders by file type'),
+                      subtitle: const Text(
+                        'Leave empty to use the default location',
+                      ),
+                      children: [
+                        for (final entry in categories.entries)
+                          directory(entry.key, entry.value),
+                      ],
+                    ),
+                    const ExpansionTile(
+                      tilePadding: EdgeInsets.zero,
+                      title: Text('Browser integration'),
+                      children: [
+                        Padding(
+                          padding: EdgeInsets.symmetric(vertical: 12),
+                          child: SelectableText(
+                            'Install the extension from this project’s browser_extension folder using your browser’s Load unpacked option. Register the native host with its extension ID using native_host/register_native_host.py. Captured downloads will appear in this library.',
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (error != null)
+                      Text(
+                        error!,
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.error,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+    ),
+    actions: [
+      TextButton(
+        onPressed: busy ? null : () => Navigator.pop(context),
+        child: const Text('Cancel'),
+      ),
+      FilledButton(
+        onPressed: loading || busy || categories.isEmpty ? null : save,
+        child: Text(busy ? 'Saving…' : 'Save changes'),
+      ),
+    ],
+  );
+}
+
+class DownloadDetails extends StatefulWidget {
+  const DownloadDetails({super.key, required this.client, required this.task});
+  final IpcClient client;
+  final DownloadTask task;
+  @override
+  State<DownloadDetails> createState() => _DownloadDetailsState();
+}
+
+class _DownloadDetailsState extends State<DownloadDetails> {
+  Map<String, dynamic>? details;
+  String? error;
+  bool busy = false;
+  late int priority = widget.task.priority ?? 1;
+  List<int> filePriorities = [];
+  @override
+  void initState() {
+    super.initState();
+    load();
+  }
+
+  Future<void> load() async {
+    try {
+      final result = await widget.client.rpc('task_details', {
+        'task_id': widget.task.id,
+      });
+      if (mounted) {
+        setState(() {
+          details = Map<String, dynamic>.from(result['task']);
+          filePriorities = [
+            for (final f in details!['files'] ?? []) f['priority'] as int,
+          ];
+          error = null;
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() => error = '$e');
+    }
+  }
+
+  Future<void> save() async {
+    setState(() {
+      busy = true;
+      error = null;
+    });
+    try {
+      await widget.client.setPriority(widget.task.id, priority);
+      if (filePriorities.isNotEmpty) {
+        await widget.client.rpc('set_file_priorities', {
+          'task_id': widget.task.id,
+          'priorities': filePriorities,
+        });
+      }
+      if (mounted) Navigator.pop(context);
+    } catch (e) {
+      if (mounted) setState(() => error = '$e');
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final d = details;
+    return AlertDialog(
+      title: const Text('Download details'),
+      content: SizedBox(
+        width: 540,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                widget.task.title,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 18,
+                ),
+              ),
+              const SizedBox(height: 18),
+              if (d == null && error == null) const LinearProgressIndicator(),
+              if (d != null) ...[
+                for (final entry in {
+                  'Source': d['source'],
+                  'Saved to': widget.task.filePath,
+                  'Type': d['type'],
+                  'Created': DateTime.fromMillisecondsSinceEpoch(
+                    ((d['created_at'] as num) * 1000).round(),
+                  ).toLocal().toString().split('.').first,
+                  if (d['type'] == 'http') 'Connections': d['num_connections'],
+                  if (d['type'] == 'http')
+                    'Resumable': d['supports_ranges'] == true
+                        ? 'Yes'
+                        : 'Not reported by server',
+                  if (d['type'] == 'torrent')
+                    'Peers / seeds': '${d['num_peers']} / ${d['num_seeds']}',
+                  if ((d['mirrors'] as List? ?? []).isNotEmpty)
+                    'Mirrors': (d['mirrors'] as List).join('\n'),
+                  if ((d['description'] ?? '').toString().isNotEmpty)
+                    'Description': d['description'],
+                }.entries)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          entry.key,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        SelectableText('${entry.value ?? ''}'),
+                      ],
+                    ),
+                  ),
+              ],
+              DropdownButtonFormField<int>(
+                initialValue: priority,
+                decoration: const InputDecoration(labelText: 'Priority'),
+                items: const [
+                  DropdownMenuItem(
+                    value: 0,
+                    child: Text('Low · 1 MB/s background mode'),
+                  ),
+                  DropdownMenuItem(value: 1, child: Text('Normal')),
+                  DropdownMenuItem(value: 2, child: Text('High')),
+                ],
+                onChanged: busy ? null : (v) => setState(() => priority = v!),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Low priority limits active downloads immediately. Connection changes apply on the next start.',
+                style: TextStyle(fontSize: 12),
+              ),
+              if (d?['type'] == 'torrent') ...[
+                const SizedBox(height: 18),
+                const Text(
+                  'Torrent files',
+                  style: TextStyle(fontWeight: FontWeight.w600),
+                ),
+                if (filePriorities.isEmpty)
+                  TextButton(
+                    onPressed: load,
+                    child: const Text('Metadata unavailable · Refresh'),
+                  ),
+                for (var i = 0; i < filePriorities.length; i++)
+                  if (d!['files'][i]['pad'] != true)
+                    CheckboxListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(d['files'][i]['name']),
+                      subtitle: Text(
+                        DownloadTask.formatBytes(d['files'][i]['size']),
+                      ),
+                      value: filePriorities[i] > 0,
+                      onChanged: busy
+                          ? null
+                          : (v) =>
+                                setState(() => filePriorities[i] = v! ? 4 : 0),
+                    ),
+              ],
+              if (error != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 16),
+                  child: Text(
+                    error!,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.error,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: busy ? null : () => Navigator.pop(context),
+          child: const Text('Close'),
+        ),
+        FilledButton(onPressed: busy ? null : save, child: const Text('Apply')),
+      ],
+    );
+  }
+}

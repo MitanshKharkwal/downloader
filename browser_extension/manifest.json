@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Download Manager Capture",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Sends downloads and magnet links to the Download Manager desktop app.",
   "permissions": ["downloads", "contextMenus", "storage", "nativeMessaging", "cookies", "notifications"],
   "host_permissions": ["<all_urls>"],

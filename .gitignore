@@ -1,8 +1,15 @@
 venv/
 __pycache__/
 *.pyc
+.pytest_cache/
+.pytest-*/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
 .dm_state.json
 downloads/
+torrent_downloads/
 *.dmpart.json
 *.part
 build/
@@ -31,6 +38,12 @@ flutter_ui/build/
 flutter_ui/node_modules/
 flutter_ui/package.json
 flutter_ui/package-lock.json
+
+# Editors and operating systems
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
 
 # Spec docs (not part of codebase)
 gemini_*.md

@@ -1,21 +1,34 @@
 # Packaging Instructions
 
-1. **Build Python Daemon**:
-```bash
-venv\Scripts\pyinstaller packaging/daemon.spec --distpath packaging/dist --workpath packaging/build
+Run these commands from the repository root on Windows. The build requires the
+project virtual environment, Flutter with Windows desktop support, and Inno
+Setup 7.
+
+1. Build the Flutter UI so both packages receive the latest interface:
+
+```powershell
+& C:\src\flutter\bin\flutter.bat build windows --release --build-name 1.1.0 --build-number 2
 ```
 
-2. **Build Flutter App**:
-```bash
-cd flutter_ui
-flutter build windows --release
-cd ..
+2. Build the daemon and browser native-host utilities:
+
+```powershell
+venv\Scripts\pyinstaller.exe --noconfirm --clean packaging\daemon.spec --distpath packaging\dist --workpath packaging\build
+venv\Scripts\pyinstaller.exe --noconfirm --clean packaging\native_host.spec --distpath packaging\dist --workpath packaging\build
 ```
 
-3. **Build Installer**:
-```bash
-iscc packaging/installer.iss
-```
-(Requires Inno Setup installed: https://jrsoftware.org/isinfo.php)
+3. Build the self-contained portable application:
 
-Output will be in `packaging/dist/DownloaderSetup.exe`.
+```powershell
+venv\Scripts\pyinstaller.exe --noconfirm --clean packaging\portable.spec --distpath packaging\dist --workpath packaging\build
+```
+
+4. Build the installer:
+
+```powershell
+& 'C:\Program Files\Inno Setup 7\ISCC.exe' packaging\installer.iss
+```
+
+The distributable outputs are `packaging/dist/Downloader.exe` and
+`packaging/dist/DownloaderSetup.exe`. The installer also includes the browser
+extension and the native messaging registration utility.

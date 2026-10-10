@@ -21,6 +21,7 @@ import json
 import os
 import secrets
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 # Ensure we can type hint DownloadManager without circular imports
@@ -108,6 +109,24 @@ def _make_handler(manager: DownloadManager, token: str):
                     result = manager.add(
                         body["source"], filename=filename, headers=headers
                     )
+                    if body.get("verify") is True:
+                        deadline = time.monotonic() + 8
+                        while (
+                            result.status.value == "connecting"
+                            and time.monotonic() < deadline
+                        ):
+                            time.sleep(0.05)
+                        if result.status.value == "error":
+                            error = result.error_message or "The source rejected the request"
+                            manager.remove_task(result.id, delete_files=True)
+                            self._send_json(
+                                422,
+                                {
+                                    "ok": False,
+                                    "error": f"{error}. The browser download was left active.",
+                                },
+                            )
+                            return
                     public = {
                         k: v for k, v in result.to_dict().items() if k != "headers"
                     }
@@ -124,7 +143,9 @@ def _make_handler(manager: DownloadManager, token: str):
                 args = body.get("args", {})
 
                 try:
-                    if method == "list_tasks":
+                    if method == "get_capabilities":
+                        self._send_json(200, {"ok": True, "protocol": 2})
+                    elif method == "list_tasks":
                         tasks = []
                         for task in manager.list_tasks():
                             tasks.append(
@@ -145,6 +166,42 @@ def _make_handler(manager: DownloadManager, token: str):
                                 }
                             )
                         self._send_json(200, {"ok": True, "tasks": tasks})
+                    elif method == "add_download":
+                        task = manager.add(
+                            args.get("source"),
+                            dest_dir=args.get("dest_dir"),
+                            filename=args.get("filename"),
+                            headers=args.get("headers"),
+                            mirrors=args.get("mirrors"),
+                        )
+                        self._send_json(200, {"ok": True, "id": task.id})
+                    elif method == "task_details":
+                        self._send_json(
+                            200,
+                            {"ok": True, "task": manager.task_details(args["task_id"])},
+                        )
+                    elif method == "set_file_priorities":
+                        manager.set_file_priorities(args["task_id"], args["priorities"])
+                        self._send_json(200, {"ok": True})
+                    elif method == "set_urgent":
+                        task = manager.get(args["task_id"])
+                        if not task or task.status.value not in (
+                            "queued",
+                            "paused",
+                            "connecting",
+                            "downloading",
+                        ):
+                            raise ValueError(
+                                "Only pending downloads can be made urgent"
+                            )
+                        manager.set_urgent(task.id)
+                        self._send_json(200, {"ok": True})
+                    elif method == "export_queue":
+                        manager.export_queue(args["file_path"])
+                        self._send_json(200, {"ok": True})
+                    elif method == "import_queue":
+                        result = manager.import_queue(args["file_path"])
+                        self._send_json(200, {"ok": True, **result})
                     elif method == "add_video_task":
                         task = manager.add_video(
                             args.get("url"),
@@ -157,7 +214,20 @@ def _make_handler(manager: DownloadManager, token: str):
                         import yt_dlp  # type: ignore
 
                         url = args.get("url")
-                        ydl_opts = {"quiet": True, "no_warnings": True}
+                        from urllib.parse import urlparse
+
+                        if (
+                            not isinstance(url, str)
+                            or urlparse(url).scheme not in ("http", "https")
+                            or not urlparse(url).netloc
+                        ):
+                            raise ValueError("Video URL must be HTTP or HTTPS")
+                        ydl_opts = {
+                            "quiet": True,
+                            "no_warnings": True,
+                            "noplaylist": True,
+                            "socket_timeout": 20,
+                        }
                         try:
                             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                                 info = ydl.extract_info(url, download=False)

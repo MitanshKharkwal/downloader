@@ -63,8 +63,8 @@ python register_native_host.py --extension-id <ID from step 1>
 ## Testing
 
 ```bash
-# Python engine tests
-pytest tests/
+# Python engine and native-host tests
+pytest
 
 # Flutter widget tests
 cd flutter_ui && flutter test
@@ -105,7 +105,7 @@ History and download settings are stored in `~/.download_manager/state.json`, in
 
 New torrents use a private directory named after the task ID. Legacy torrents retain their original location; offline deletion deliberately leaves their shared directory intact. Invalid HTTP range responses fail visibly instead of publishing potentially corrupted files. Servers without resource validators may require a fresh download after pausing.
 
-The bandwidth setting is a payload-rate cap: HTTP and video share a bucket, with a separate portion assigned to libtorrent while both kinds are active. Network protocol overhead and short buffering bursts are outside that cap. Video mode currently offers combined video formats; separate high-resolution audio/video merging requires additional FFmpeg integration.
+The bandwidth setting is a payload-rate cap: HTTP and video share a bucket, with a separate portion assigned to libtorrent while both kinds are active. Low-priority tasks additionally use a live 1 MB/s background-mode cap; normal and high priority remain governed by the global limit. Network protocol overhead and short buffering bursts are outside those caps. Video mode currently offers combined video formats; separate high-resolution audio/video merging requires additional FFmpeg integration.
 
 Run the isolated regression checks:
 

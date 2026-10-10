@@ -82,20 +82,44 @@ def _try_launch_app() -> None:
         pass
 
 
-def _app_running() -> bool:
+def _connection_status() -> dict:
+    token = _read_token()
+    if token is None:
+        return {
+            "ok": False,
+            "pong": True,
+            "app_token_found": False,
+            "error": "Desktop app has not created an IPC token yet",
+        }
     try:
-        with urllib.request.urlopen(
-            f"http://127.0.0.1:{IPC_PORT}/ping", timeout=2
-        ) as response:
-            return json.loads(response.read()).get("app") == "download-manager"
+        request = urllib.request.Request(
+            f"http://127.0.0.1:{IPC_PORT}/rpc",
+            data=b'{"method":"get_capabilities","args":{}}',
+            headers={"X-Auth-Token": token, "Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(request, timeout=2) as response:
+            connected = json.loads(response.read()).get("ok") is True
+        result = {"ok": connected, "pong": True, "app_token_found": True}
+        if not connected:
+            result["error"] = "Desktop app did not accept the connection check"
+        return result
+    except urllib.error.HTTPError as exc:
+        error = (
+            "Desktop app rejected the native host token"
+            if exc.code == 401
+            else f"Desktop app returned HTTP {exc.code}"
+        )
     except (OSError, ValueError):
-        return False
+        error = "Desktop app is not reachable"
+    return {"ok": False, "pong": True, "app_token_found": True, "error": error}
 
 
 def post_to_app(
     source: str,
     filename: str | None = None,
     headers: dict | None = None,
+    verify: bool = False,
     retries: int = 5,
     delay: float = 0.6,
 ) -> dict:
@@ -114,7 +138,12 @@ def post_to_app(
         }
 
     payload = json.dumps(
-        {"source": source, "filename": filename, "headers": headers or {}}
+        {
+            "source": source,
+            "filename": filename,
+            "headers": headers or {},
+            "verify": verify,
+        }
     ).encode()
     launched = False
 
@@ -126,7 +155,7 @@ def post_to_app(
                 headers={"X-Auth-Token": token, "Content-Type": "application/json"},
                 method="POST",
             )
-            with urllib.request.urlopen(req, timeout=2) as resp:
+            with urllib.request.urlopen(req, timeout=12 if verify else 2) as resp:
                 return json.loads(resp.read())
         except urllib.error.HTTPError as e:
             try:
@@ -166,18 +195,17 @@ def handle(message: dict) -> dict:
     action = message.get("action")
 
     if action == "ping":
-        return {
-            "ok": _app_running(),
-            "pong": True,
-            "app_token_found": _read_token() is not None,
-        }
+        return _connection_status()
 
     if action == "add":
         source = message.get("source")
         if not source:
             return {"ok": False, "error": "missing 'source'"}
         return post_to_app(
-            source, filename=message.get("filename"), headers=message.get("headers")
+            source,
+            filename=message.get("filename"),
+            headers=message.get("headers"),
+            verify=message.get("verify") is True,
         )
 
     return {"ok": False, "error": f"unknown action: {action!r}"}

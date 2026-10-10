@@ -45,12 +45,35 @@ def test_native_add_round_trip(app):
     assert app == ["https://example.invalid/file"]
 
 
+def test_native_add_forwards_verification(app):
+    with patch.object(host, "post_to_app", return_value={"ok": True}) as post:
+        result = host.handle(
+            {
+                "action": "add",
+                "source": "https://example.invalid/file",
+                "verify": True,
+            }
+        )
+    assert result["ok"]
+    assert post.call_args.kwargs["verify"] is True
+
+
 def test_ping_without_daemon_does_not_report_connected(tmp_path, monkeypatch):
     token = tmp_path / "token.txt"
     token.write_text("test-token")
     monkeypatch.setattr(host, "TOKEN_PATH", str(token))
-    with patch.object(host, "_app_running", return_value=False):
-        assert not host.handle({"action": "ping"})["ok"]
+    monkeypatch.setattr(host, "IPC_PORT", 0)
+    assert not host.handle({"action": "ping"})["ok"]
+
+
+def test_ping_rejects_stale_host_token(app, tmp_path, monkeypatch):
+    token = tmp_path / "stale-token.txt"
+    token.write_text("wrong-token")
+    monkeypatch.setattr(host, "TOKEN_PATH", str(token))
+    result = host.handle({"action": "ping"})
+    assert not result["ok"]
+    assert result["app_token_found"]
+    assert "token" in result["error"]
 
 
 @pytest.mark.parametrize(

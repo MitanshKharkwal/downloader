@@ -82,8 +82,8 @@ class HttpDownload:
         }
         self.rate_limiter = rate_limiter
         self.reserve_filename = reserve_filename
-        self._requested_status = None
-        self._worker_error = None
+        self._requested_status: DownloadStatus | None = None
+        self._worker_error: Exception | None = None
         self._lifecycle = threading.RLock()
 
         self._segments: list[_Segment] = []
@@ -147,6 +147,11 @@ class HttpDownload:
             self.task.status = DownloadStatus.CANCELED
             self.task.speed_bps = 0
             self._cleanup_state_file()
+            try:
+                if os.path.isfile(self._part_path):
+                    os.remove(self._part_path)
+            except OSError:
+                pass
             if delete_files:
                 from .paths import cleanup_task_files
 
@@ -157,6 +162,13 @@ class HttpDownload:
         with self._lifecycle:
             self._cancel_event.set()
             self._join_controller()
+
+    def on_priority_changed(self) -> None:
+        if hasattr(self.rate_limiter, "refresh"):
+            self.rate_limiter.refresh()
+        self._speed_samples.clear()
+        self._speed_samples.append((time.time(), self.task.downloaded_bytes))
+        self.task.speed_bps = 0
 
     # -- internals -------------------------------------------------------
 

@@ -1,0 +1,21 @@
+target-version = "py312"
+line-length = 100
+exclude = [
+    ".git",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".ruff_cache",
+    "venv",
+    "build",
+    "dist",
+    "packaging/build",
+    "packaging/dist",
+    "flutter_ui/build",
+]
+
+[lint]
+select = ["E4", "E7", "E9", "F", "I"]
+
+[lint.per-file-ignores]
+"daemon.py" = ["E402"]
+"native_host/tests/run_headless_app_for_test.py" = ["E402"]

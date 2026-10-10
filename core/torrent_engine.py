@@ -30,7 +30,9 @@ except ImportError:
     LIBTORRENT_AVAILABLE = False
 
 from .events import EventEmitter
-from .models import DownloadStatus, DownloadTask
+from .models import DownloadStatus, DownloadTask, Priority
+
+LOW_PRIORITY_RATE_BPS = 1024 * 1024
 
 POLL_INTERVAL_SECONDS = 1.0
 
@@ -116,6 +118,7 @@ class TorrentDownload:
             os.makedirs(self.task.dest_path, exist_ok=True)
             params = self._build_add_params()
             self._handle = self._session.add_torrent(params)
+            self.on_priority_changed()
         except Exception as exc:  # noqa: BLE001 -- malformed magnet/.torrent input is real user input, not a bug
             self.task.status = DownloadStatus.ERROR
             self.task.error_message = f"couldn't add torrent: {exc}"
@@ -173,7 +176,40 @@ class TorrentDownload:
         self.task.status = DownloadStatus.CANCELED
         self.events.emit("status", self.task)
 
+    def on_priority_changed(self) -> None:
+        if self._handle and self._handle.is_valid():
+            limit = LOW_PRIORITY_RATE_BPS if self.task.priority == Priority.LOW else 0
+            self._handle.set_download_limit(limit)
+        self.task.speed_bps = 0
+
     # -- internals ---------------------------------------------------------
+
+    def list_files(self) -> list[dict]:
+        handle = self._handle
+        if not handle or not handle.is_valid() or not handle.status().has_metadata:
+            return []
+        info = handle.torrent_file()
+        if info is None:
+            return []
+        files = info.files()
+        priorities = handle.get_file_priorities()
+        return [
+            {
+                "name": files.file_path(i),
+                "size": files.file_size(i),
+                "priority": priorities[i],
+                "pad": bool(files.file_flags(i) & lt.file_storage.flag_pad_file),
+            }
+            for i in range(files.num_files())
+        ]
+
+    def set_file_priorities(self, priorities: list[int]) -> None:
+        files = self.list_files()
+        handle = self._handle
+        if handle is None or not files or len(files) != len(priorities):
+            raise ValueError("Torrent file list changed or metadata is unavailable")
+        handle.prioritize_files(priorities)
+        self._files_prioritized = True
 
     def _build_add_params(self) -> lt.add_torrent_params:
         source = self.task.source

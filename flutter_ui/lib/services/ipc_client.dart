@@ -4,6 +4,8 @@ import 'package:http/http.dart' as http;
 import '../models/download_task.dart';
 
 class IpcClient {
+  Future<dynamic> rpc(String method, [Map<String, dynamic>? args]) =>
+      _callMethod(method, args);
   static const int _port = 47821;
   static const String _url = 'http://127.0.0.1:$_port/rpc';
   String? _token;

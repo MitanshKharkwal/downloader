@@ -90,6 +90,11 @@ class VideoDownload:
         self._cancel_event.set()
         self._join()
 
+    def on_priority_changed(self) -> None:
+        if hasattr(self.rate_limiter, "refresh"):
+            self.rate_limiter.refresh()
+        self.task.speed_bps = 0
+
     def _progress_hook(self, d):
         if self._cancel_event.is_set():
             raise Exception("Cancelled")

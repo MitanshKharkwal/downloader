@@ -19,20 +19,21 @@ async function interceptEnabled() {
   return interceptDownloads;
 }
 
-async function getHeadersForUrl(url) {
+async function getHeadersForUrl(url, referrer) {
+  const headers = { 'User-Agent': navigator.userAgent };
+  if (referrer && /^https?:\/\//i.test(referrer)) {
+    headers.Referer = referrer;
+  }
   try {
     const cookies = await chrome.cookies.getAll({ url });
     const cookieHeader = cookies.map((c) => `${c.name}=${c.value}`).join('; ');
-    const headers = {
-      'User-Agent': navigator.userAgent
-    };
     if (cookieHeader) {
       headers['Cookie'] = cookieHeader;
     }
     return headers;
   } catch (e) {
     console.warn("[DM] Failed to get cookies:", e);
-    return { 'User-Agent': navigator.userAgent };
+    return headers;
   }
 }
 
@@ -49,13 +50,14 @@ chrome.runtime.onInstalled.addListener(() => {
 // Regular downloads: cancel the browser's own save and hand the URL to
 // the desktop app instead, if the user has this turned on.
 chrome.downloads.onCreated.addListener(async (item) => {
-  if (NON_HANDOFF_SCHEMES.some((scheme) => item.url.startsWith(scheme))) return;
+  const source = item.finalUrl || item.url;
+  if (NON_HANDOFF_SCHEMES.some((scheme) => source.startsWith(scheme))) return;
   if (!(await interceptEnabled())) return;
 
-  console.log("[DM] Intercepting download:", item.url);
+  console.log("[DM] Intercepting download:", source);
 
-  const headers = await getHeadersForUrl(item.url);
-  const result = await sendToNativeHost({ action: "add", source: item.url, filename: item.filename ? item.filename.split(/[\\/]/).pop() : undefined, headers });
+  const headers = await getHeadersForUrl(source, item.referrer);
+  const result = await sendToNativeHost({ action: "add", source, filename: item.filename ? item.filename.split(/[\\/]/).pop() : undefined, headers, verify: true });
   console.log("[DM] Native host response:", result);
   
   if (result && result.ok) {
@@ -70,14 +72,14 @@ chrome.downloads.onCreated.addListener(async (item) => {
       message: "Failed to send download to app. The browser will download it normally."
     });
   }
-  chrome.storage.local.set({ lastResult: { ...result, source: item.url, at: Date.now() } });
+  chrome.storage.local.set({ lastResult: { ...result, source, at: Date.now() } });
 });
 
 // Magnet links (from content.js) and popup requests (ping / manual add).
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg.type === "magnet") {
     getHeadersForUrl(msg.url).then(headers => {
-      sendToNativeHost({ action: "add", source: msg.url, headers }).then((result) => {
+      sendToNativeHost({ action: "add", source: msg.url, headers, verify: true }).then((result) => {
         chrome.storage.local.set({ lastResult: { ...result, source: msg.url, at: Date.now() } });
         sendResponse(result);
       });
@@ -90,7 +92,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   }
   if (msg.type === "manual-add") {
     getHeadersForUrl(msg.url).then(headers => {
-      sendToNativeHost({ action: "add", source: msg.url, headers }).then((result) => {
+      sendToNativeHost({ action: "add", source: msg.url, headers, verify: true }).then((result) => {
         chrome.storage.local.set({ lastResult: { ...result, source: msg.url, at: Date.now() } });
         sendResponse(result);
       });
@@ -101,7 +103,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 
 chrome.contextMenus.onClicked.addListener(async (info) => {
   if (info.menuItemId !== "send-to-dm" || !info.linkUrl) return;
-  const headers = await getHeadersForUrl(info.linkUrl);
-  const result = await sendToNativeHost({ action: "add", source: info.linkUrl, headers });
+  const headers = await getHeadersForUrl(info.linkUrl, info.pageUrl);
+  const result = await sendToNativeHost({ action: "add", source: info.linkUrl, headers, verify: true });
   chrome.storage.local.set({ lastResult: { ...result, source: info.linkUrl, at: Date.now() } });
 });

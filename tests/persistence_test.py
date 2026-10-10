@@ -1,4 +1,5 @@
 import os
+import shutil
 import sys
 import tempfile
 import time
@@ -20,8 +21,6 @@ DATA = bytes(
 start_server(DATA, port=8988)
 time.sleep(0.2)
 URL = "http://127.0.0.1:8988/file.bin"
-
-import shutil
 
 test_dir = os.path.join(tempfile.gettempdir(), "persist_test")
 shutil.rmtree(test_dir, ignore_errors=True)

@@ -618,7 +618,10 @@ class _ActionsState extends State<ActionsWidget> {
           itemBuilder: (BuildContext context) => <PopupMenuEntry<int>>[
             const PopupMenuItem<int>(value: 2, child: Text('High Priority')),
             const PopupMenuItem<int>(value: 1, child: Text('Normal Priority')),
-            const PopupMenuItem<int>(value: 0, child: Text('Low Priority')),
+            const PopupMenuItem<int>(
+              value: 0,
+              child: Text('Low Priority · 1 MB/s'),
+            ),
           ],
         ),
       );

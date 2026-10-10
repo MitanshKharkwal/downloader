@@ -27,6 +27,7 @@ from .paths import cleanup_task_files, safe_filename, unique_path
 from .torrent_engine import TorrentDownload, TorrentSession
 
 _MAGNET_RE = re.compile(r"^magnet:\?", re.IGNORECASE)
+LOW_PRIORITY_RATE_BPS = 1024 * 1024
 
 
 def _cleanup_offline_task(task: DownloadTask) -> None:
@@ -83,6 +84,26 @@ class TokenBucket:
             time.sleep(min(0.1, max(0.001, wait_time)))
 
 
+class PriorityRateLimiter:
+    """Apply the global limit plus a live per-task background-mode cap."""
+
+    def __init__(self, task: DownloadTask, global_limiter: TokenBucket):
+        self.task = task
+        self.global_limiter = global_limiter
+        self.local_limiter = TokenBucket(0)
+        self.refresh()
+
+    def refresh(self) -> None:
+        rate = LOW_PRIORITY_RATE_BPS if self.task.priority == Priority.LOW else 0
+        if self.local_limiter.rate != rate:
+            self.local_limiter.rate = rate
+
+    def consume(self, tokens: int, cancel_event=None) -> None:
+        self.refresh()
+        self.global_limiter.consume(tokens, cancel_event)
+        self.local_limiter.consume(tokens, cancel_event)
+
+
 class DownloadManager:
     def __init__(
         self,
@@ -96,7 +117,7 @@ class DownloadManager:
         self.max_concurrent_downloads = max_concurrent_downloads
         self.max_connections_per_download = max_connections_per_download
 
-        self._config = {
+        self._config: dict[str, Any] = {
             "download_dir": download_dir,
             "max_concurrent_downloads": max_concurrent_downloads,
             "global_bandwidth_limit": global_bandwidth_limit,
@@ -155,7 +176,13 @@ class DownloadManager:
         self._maybe_start_next()
 
     def add(
-        self, source: str, dest_dir=None, filename=None, headers=None
+        self,
+        source: str,
+        dest_dir=None,
+        filename=None,
+        headers=None,
+        mirrors=None,
+        file_priorities=None,
     ) -> DownloadTask:
         with self._operations:
             if not isinstance(source, str) or not source.strip():
@@ -178,7 +205,24 @@ class DownloadManager:
                 )
             ):
                 raise ValueError("Headers must contain text keys and values")
-            return self._add(source, dest_dir, filename, headers)
+            if mirrors is not None and (
+                not isinstance(mirrors, list)
+                or any(
+                    not isinstance(url, str)
+                    or urlparse(url).scheme not in ("http", "https")
+                    or not urlparse(url).netloc
+                    for url in mirrors
+                )
+            ):
+                raise ValueError("Mirrors must be HTTP(S) URLs")
+            if file_priorities is not None and (
+                not isinstance(file_priorities, list)
+                or any(type(p) is not int or not 0 <= p <= 7 for p in file_priorities)
+            ):
+                raise ValueError("File priorities must be integers from 0 to 7")
+            return self._add(
+                source, dest_dir, filename, headers, mirrors, file_priorities
+            )
 
     def reserve_filename(self, task: DownloadTask, name: str) -> str:
         with self._lock:
@@ -228,6 +272,8 @@ class DownloadManager:
         dest_dir: str | None = None,
         filename: str | None = None,
         headers: dict | None = None,
+        mirrors: list[str] | None = None,
+        file_priorities: list[int] | None = None,
     ) -> DownloadTask:
         """Add a URL, magnet URI, or .torrent path/URL to the queue.
 
@@ -239,6 +285,7 @@ class DownloadManager:
         already has the same source, this method returns the existing DownloadTask
         instead of creating a duplicate.
         """
+        explicit_destination = dest_dir is not None
         dest_dir = dest_dir or self.download_dir
         os.makedirs(dest_dir, exist_ok=True)
 
@@ -298,7 +345,9 @@ class DownloadManager:
                 category = "Other"
 
             category_dirs = self.get_config().get("category_dirs", {})
-            if category_dirs.get(category):
+            if explicit_destination:
+                intended_dir = dest_dir
+            elif category_dirs.get(category):
                 intended_dir = category_dirs[category]
             else:
                 intended_dir = os.path.join(dest_dir, category)
@@ -319,8 +368,14 @@ class DownloadManager:
                                 if task.owns_dest_dir
                                 else task.dest_path
                             ) == os.path.abspath(
-                                self._config.get("category_dirs", {}).get("Torrents")
-                                or dest_dir
+                                dest_dir
+                                if explicit_destination
+                                else (
+                                    self._config.get("category_dirs", {}).get(
+                                        "Torrents"
+                                    )
+                                    or dest_dir
+                                )
                             ):
                                 return task
                         else:
@@ -336,7 +391,9 @@ class DownloadManager:
                                     return task
 
         category_dirs = self.get_config().get("category_dirs", {})
-        torrent_dir = category_dirs.get("Torrents")
+        torrent_dir = (
+            dest_dir if explicit_destination else category_dirs.get("Torrents")
+        )
         if not torrent_dir:
             torrent_dir = dest_dir
 
@@ -376,6 +433,8 @@ class DownloadManager:
                 filename_is_explicit=filename_is_explicit,
             )
 
+        task.mirrors = mirrors or []
+        task.file_priorities = file_priorities or []
         with self._lock:
             if task.type == DownloadType.TORRENT:
                 task.dest_path = os.path.join(task.dest_path, task.id)
@@ -399,7 +458,12 @@ class DownloadManager:
                 return
             if not policy:
                 self._policy_paused.discard(task_id)
+                self._paused_for_urgent_task_ids.discard(task_id)
                 task.was_paused_for_urgent = False
+                if self._urgent_task_id == task_id:
+                    self._urgent_task_id = None
+                    self._policy_paused.update(self._paused_for_urgent_task_ids)
+                    self._paused_for_urgent_task_ids.clear()
             if task.status not in (
                 DownloadStatus.CONNECTING,
                 DownloadStatus.DOWNLOADING,
@@ -501,12 +565,28 @@ class DownloadManager:
                 else:
                     task.num_connections = 8
 
+            engine = self._engines.get(task_id)
+            if engine and hasattr(engine, "on_priority_changed"):
+                engine.on_priority_changed()
+
         self._save_state()
         self.events.emit("status", task)
         self._maybe_start_next()
 
     def set_urgent(self, task_id: str) -> None:
         """Feature 9: Bandwidth 'borrow' for one urgent download."""
+        with self._operations:
+            task = self.get(task_id)
+            if not task or task.status not in (
+                DownloadStatus.QUEUED,
+                DownloadStatus.PAUSED,
+                DownloadStatus.CONNECTING,
+                DownloadStatus.DOWNLOADING,
+            ):
+                raise ValueError("Only pending downloads can be made urgent")
+            self._set_urgent(task_id)
+
+    def _set_urgent(self, task_id: str) -> None:
         self._urgent_task_id = task_id
 
         with self._lock:
@@ -524,6 +604,7 @@ class DownloadManager:
 
         for tid in list(self._paused_for_urgent_task_ids):
             self.pause(tid)
+            self._paused_for_urgent_task_ids.add(tid)
             paused_task = self.get(tid)
             if paused_task:
                 paused_task.was_paused_for_urgent = True
@@ -686,7 +767,7 @@ class DownloadManager:
             self._rebalance_bandwidth()
             self._metered = False
             try:
-                from winrt.windows.networking.connectivity import (
+                from winrt.windows.networking.connectivity import (  # type: ignore[import-not-found]
                     NetworkCostType,
                     NetworkInformation,
                 )
@@ -750,6 +831,10 @@ class DownloadManager:
                             t
                             for t in self._tasks.values()
                             if t.status == DownloadStatus.QUEUED
+                            and (
+                                self._urgent_task_id is None
+                                or t.id == self._urgent_task_id
+                            )
                         ),
                         key=lambda t: (-t.priority.value, t.created_at),
                     )
@@ -765,20 +850,23 @@ class DownloadManager:
                         continue
                     task.status = DownloadStatus.CONNECTING
                     task.speed_bps = 0
+                    engine: Any
                     if task.type == DownloadType.HTTP:
                         engine = HttpDownload(
                             task,
                             self.events,
                             num_connections=task.num_connections,
                             headers=task.headers,
-                            rate_limiter=self.rate_limiter,
+                            rate_limiter=PriorityRateLimiter(task, self.rate_limiter),
                             reserve_filename=self.reserve_filename,
                         )
                     elif task.type == DownloadType.VIDEO:
                         from .video_downloader import VideoDownload
 
                         engine = VideoDownload(
-                            task, self.events, rate_limiter=self.rate_limiter
+                            task,
+                            self.events,
+                            rate_limiter=PriorityRateLimiter(task, self.rate_limiter),
                         )
                     else:
                         engine = TorrentDownload(
@@ -973,6 +1061,45 @@ class DownloadManager:
                 task.speed_bps = 0.0
             self._tasks[task.id] = task
 
+    def task_details(self, task_id: str) -> dict:
+        with self._operations:
+            task = self.get(task_id)
+            if not task:
+                raise ValueError("Download no longer exists")
+            result = {k: v for k, v in task.to_dict().items() if k != "headers"}
+            engine = self._engines.get(task_id)
+            result["files"] = (
+                engine.list_files() if isinstance(engine, TorrentDownload) else []
+            )
+            return result
+
+    def set_file_priorities(self, task_id: str, priorities: list[int]) -> None:
+        with self._operations:
+            task = self.get(task_id)
+            if not task or task.type != DownloadType.TORRENT:
+                raise ValueError("Select a torrent download")
+            if (
+                not isinstance(priorities, list)
+                or not priorities
+                or any(type(p) is not int or not 0 <= p <= 7 for p in priorities)
+                or not any(priorities)
+            ):
+                raise ValueError("Select at least one file; priorities must be 0 to 7")
+            engine = self._engines.get(task_id)
+            if not isinstance(engine, TorrentDownload):
+                raise ValueError(
+                    "Torrent metadata unavailable; resume the download first"
+                )
+            files = engine.list_files()
+            if len(files) != len(priorities) or not any(
+                priority > 0 and not file["pad"]
+                for priority, file in zip(priorities, files)
+            ):
+                raise ValueError("Select at least one downloadable file")
+            engine.set_file_priorities(priorities)
+            task.file_priorities = list(priorities)
+            self._save_state()
+
     def export_queue(self, file_path: str) -> None:
         """Feature 10: Export a download queue as a shareable file."""
         import json
@@ -982,19 +1109,23 @@ class DownloadManager:
                 {k: v for k, v in t.to_dict().items() if k != "headers"}
                 for t in self._tasks.values()
             ]
-        with open(file_path, "w") as f:
+        with open(file_path, "w", encoding="utf-8") as f:
             json.dump(tasks_manifest, f, indent=2, default=str)
 
-    def import_queue(self, file_path: str) -> None:
+    def import_queue(self, file_path: str) -> dict:
         """Feature 10: Import a download queue from a shareable file."""
         import json
 
-        with open(file_path, "r") as f:
+        with open(file_path, "r", encoding="utf-8") as f:
             manifest = json.load(f)
+        if not isinstance(manifest, list) or len(manifest) > 10000:
+            raise ValueError("Queue must be a list of at most 10000 downloads")
+        imported = failed = 0
         for entry in manifest:
             try:
                 source = entry.get("source")
                 if not source:
+                    failed += 1
                     continue
                 filename = entry.get("dest_path")
                 if filename:
@@ -1003,10 +1134,18 @@ class DownloadManager:
                     filename = os.path.basename(filename)
 
                 # Re-add via manager.add for collision handling, path resolution, and engine setup
-                task = self.add(source, filename=filename, headers=entry.get("headers"))
-                if "mirrors" in entry:
-                    task.mirrors = entry["mirrors"]
-                if "file_priorities" in entry:
-                    task.file_priorities = entry["file_priorities"]
+                if source.startswith("ytdlp||"):
+                    _, quality, url = source.split("||", 2)
+                    self.add_video(url, quality, filename or "video.mp4")
+                else:
+                    self.add(
+                        source,
+                        filename=filename,
+                        headers=entry.get("headers"),
+                        mirrors=entry.get("mirrors"),
+                        file_priorities=entry.get("file_priorities"),
+                    )
+                imported += 1
             except Exception:
-                continue
+                failed += 1
+        return {"imported": imported, "failed": failed}

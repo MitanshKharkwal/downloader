@@ -20,7 +20,7 @@ async function init() {
   chrome.runtime.sendMessage({ type: "ping" }, (response) => {
     if (chrome.runtime.lastError || !response || !response.ok) {
       statusDot.className = "dot bad";
-      statusText.textContent = "App not reachable";
+      statusText.textContent = response?.error || chrome.runtime.lastError?.message || "App not reachable";
       return;
     }
     if (!response.app_token_found) {

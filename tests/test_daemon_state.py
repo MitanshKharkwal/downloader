@@ -2,13 +2,13 @@
 
 import json
 import os
-from pathlib import Path
 import socket
 import subprocess
 import sys
 import time
 import urllib.error
 import urllib.request
+from pathlib import Path
 
 
 def test_daemon_migrates_state_and_restarts_after_directory_change(tmp_path):
@@ -73,6 +73,7 @@ def test_daemon_migrates_state_and_restarts_after_directory_change(tmp_path):
                     assert time.monotonic() < deadline
                     time.sleep(0.1)
             task = result["tasks"][0]
+            assert rpc("get_capabilities")["protocol"] == 2
             assert task["id"] == "fixture"
             assert task["status"] == "PAUSED"
             assert type(task["priority"]) is int
