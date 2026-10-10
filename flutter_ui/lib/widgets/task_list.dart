@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../models/download_task.dart';
@@ -18,12 +19,12 @@ class TaskList extends StatefulWidget {
   });
 
   final List<DownloadTask> tasks;
-  final ValueChanged<DownloadTask> onPause;
-  final ValueChanged<DownloadTask> onResume;
-  final ValueChanged<DownloadTask> onRetry;
-  final ValueChanged<DownloadTask> onCancel;
-  final ValueChanged<DownloadTask> onRemove;
-  final void Function(DownloadTask, int) onPriority;
+  final FutureOr<void> Function(DownloadTask) onPause;
+  final FutureOr<void> Function(DownloadTask) onResume;
+  final FutureOr<void> Function(DownloadTask) onRetry;
+  final FutureOr<void> Function(DownloadTask) onCancel;
+  final FutureOr<void> Function(DownloadTask) onRemove;
+  final FutureOr<void> Function(DownloadTask, int) onPriority;
   final bool compact;
 
   @override

@@ -33,8 +33,9 @@ class AppConfig:
         with self._lock:
             try:
                 os.makedirs(os.path.dirname(self.config_path), exist_ok=True)
-                with open(self.config_path, "w", encoding="utf-8") as f:
+                with open(self.config_path + ".tmp", "w", encoding="utf-8") as f:
                     json.dump(self.settings, f, indent=4)
+                os.replace(self.config_path + ".tmp", self.config_path)
             except Exception:
                 pass
 
@@ -71,7 +72,7 @@ class AppConfig:
                 import os
 
                 if getattr(sys, "frozen", False):
-                    exe_path = sys.executable
+                    exe_path = f'"{sys.executable}"'
                 else:
                     daemon_path = os.path.abspath(
                         os.path.join(os.path.dirname(__file__), "..", "daemon.py")

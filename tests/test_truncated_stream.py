@@ -57,6 +57,7 @@ def test_truncated_download():
         assert any(
             term in task.error_message
             for term in (
+                "Invalid range response",
                 "stream truncated",
                 "truncated",
                 "IncompleteRead",

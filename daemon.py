@@ -4,7 +4,10 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-log_path = os.path.join(os.path.expanduser("~"), ".download_manager", "daemon.log")
+APP_DATA_DIR = os.environ.get("DOWNLOAD_MANAGER_DATA_DIR") or os.path.join(
+    os.path.expanduser("~"), ".download_manager"
+)
+log_path = os.path.join(APP_DATA_DIR, "daemon.log")
 os.makedirs(os.path.dirname(log_path), exist_ok=True)
 if sys.stdout is None or not hasattr(sys.stdout, "isatty") or not sys.stdout.isatty():
     sys.stdout = open(log_path, "a", encoding="utf-8")
@@ -14,11 +17,10 @@ if sys.stdout is None or not hasattr(sys.stdout, "isatty") or not sys.stdout.isa
 from core.ipc_server import IpcServer, load_or_create_token
 from core.manager import DownloadManager
 
-APP_DATA_DIR = os.path.join(os.path.expanduser("~"), ".download_manager")
 TOKEN_PATH = os.path.join(APP_DATA_DIR, "ipc_token.txt")
 
 
-def main():
+def main(stop_event=None):
     from core.config import AppConfig
 
     CONFIG_PATH = os.path.join(APP_DATA_DIR, "config.json")
@@ -27,11 +29,22 @@ def main():
 
     DOWNLOAD_DIR = str(app_config.get("download_dir"))
     os.makedirs(DOWNLOAD_DIR, exist_ok=True)
+    import shutil
+
+    state_path = os.path.join(APP_DATA_DIR, "state.json")
+    if not os.path.exists(state_path):
+        legacy = os.path.join(DOWNLOAD_DIR, ".dm_state.json")
+        if os.path.isfile(legacy):
+            shutil.copy2(legacy, state_path)
     manager = DownloadManager(
         download_dir=DOWNLOAD_DIR,
+        state_file=state_path,
         max_concurrent_downloads=int(app_config.get("max_concurrent")),
     )
     manager.app_config = app_config  # type: ignore
+    if not os.path.exists(state_path):
+        manager.apply_config()
+        manager.set_config({"category_dirs": app_config.get("category_dirs")})
 
     def _on_download_added(task):
         try:
@@ -50,6 +63,7 @@ def main():
                     sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__))
                 )
                 ui_paths = [
+                    os.path.join(os.path.dirname(sys.executable), "flutter_ui.exe"),
                     os.path.join(base_dir, "flutter_ui.exe"),
                     os.path.join(base_dir, "flutter_ui_bundle", "flutter_ui.exe"),
                 ]
@@ -63,7 +77,9 @@ def main():
     manager.events.on("added", _on_download_added)
 
     token = load_or_create_token(TOKEN_PATH)
-    ipc = IpcServer(manager, token)
+    ipc = IpcServer(
+        manager, token, port=int(os.environ.get("DOWNLOAD_MANAGER_IPC_PORT", "47821"))
+    )
 
     try:
         ipc.start()
@@ -78,7 +94,7 @@ def main():
             last_offered_link = None
             last_offer_time = 0
             active_toast_thread = None
-            while True:
+            while stop_event is None or not stop_event.is_set():
                 try:
                     time.sleep(1)
                     current_clipboard = pyperclip.paste().strip()
@@ -121,15 +137,21 @@ def main():
 
         import threading
 
-        threading.Thread(target=clipboard_monitor, daemon=True).start()
+        if (
+            sys.platform == "win32"
+            and os.environ.get("DOWNLOAD_MANAGER_CLIPBOARD", "1") != "0"
+        ):
+            threading.Thread(target=clipboard_monitor, daemon=True).start()
 
         # Keep the daemon running
-        while True:
-            time.sleep(1)
+        while stop_event is None or not stop_event.wait(1):
+            if stop_event is None:
+                time.sleep(1)
     except KeyboardInterrupt:
         pass
     finally:
         ipc.stop()
+        manager.shutdown()
 
 
 if __name__ == "__main__":

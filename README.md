@@ -1,6 +1,6 @@
 ﻿# Downloader
 
-A desktop download manager with a polished Flutter UI, a Python engine, and a Chrome extension — think IDM, but open-source and cross-platform.
+A desktop download manager with a polished Flutter UI, a Python engine, and a Chrome extension — think IDM, but open-source, with a Windows desktop build.
 
 ## Features
 
@@ -40,14 +40,14 @@ pip install -r requirements.txt
 python daemon.py
 ```
 
-Downloads land in `~/.download_manager/downloads/`. An auth token is created at `~/.download_manager/ipc_token.txt` on first run.
+Downloads land in `~/Downloads/`. An auth token is created at `~/.download_manager/ipc_token.txt` on first run.
 
 ### 3 — Start the Flutter UI
 
 ```bash
 cd flutter_ui
 flutter pub get
-flutter run -d windows    # or macos / linux
+flutter run -d windows
 ```
 
 ### 4 — Browser extension *(optional)*
@@ -90,11 +90,30 @@ tests/                  pytest integration suite
 
 ## Tech stack
 
-- **Engine:** Python 3, aiohttp, libtorrent, yt-dlp, requests
-- **UI:** Flutter (Windows / macOS / Linux), google_fonts, phosphor_icons, fl_chart
+- **Engine:** Python 3, libtorrent, yt-dlp, requests
+- **UI:** Flutter (Windows), google_fonts, phosphor_icons, fl_chart
 - **Typography:** General Sans (Fontshare)
 - **Extension:** Chrome Manifest V3
 
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+## Reliability and local verification
+
+History and download settings are stored in `~/.download_manager/state.json`, independently of the download folder. On first startup after upgrading, the daemon copies a legacy `.dm_state.json` from the configured download folder when present. Keep a backup of an older folder's state file if you changed directories before upgrading.
+
+New torrents use a private directory named after the task ID. Legacy torrents retain their original location; offline deletion deliberately leaves their shared directory intact. Invalid HTTP range responses fail visibly instead of publishing potentially corrupted files. Servers without resource validators may require a fresh download after pausing.
+
+The bandwidth setting is a payload-rate cap: HTTP and video share a bucket, with a separate portion assigned to libtorrent while both kinds are active. Network protocol overhead and short buffering bursts are outside that cap. Video mode currently offers combined video formats; separate high-resolution audio/video merging requires additional FFmpeg integration.
+
+Run the isolated regression checks:
+
+```powershell
+.\venv\Scripts\python.exe -m pytest tests/test_review_regressions.py tests/test_video_downloader.py tests/test_explicit_filename.py tests/test_truncated_stream.py native_host/tests/test_host.py -q
+cd flutter_ui
+flutter analyze --no-pub
+flutter test --no-pub
+```
+
+Several older `*_test.py` files are standalone smoke scripts with real downloads or fixed ports. Browser end-to-end tests need a separately configured browser and native-host installation. They are not covered by the isolated command above. macOS, Linux, and Android release packaging is not currently supported.

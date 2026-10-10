@@ -28,14 +28,20 @@ class IpcClient {
     await _loadToken();
     if (_token == null) throw Exception("IPC Token not found");
 
-    final response = await http.post(
-      Uri.parse(_url),
-      headers: {'Content-Type': 'application/json', 'X-Auth-Token': _token!},
-      body: jsonEncode({'method': method, 'args': args ?? {}}),
-    );
+    final response = await http
+        .post(
+          Uri.parse(_url),
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Auth-Token': _token!,
+          },
+          body: jsonEncode({'method': method, 'args': args ?? {}}),
+        )
+        .timeout(const Duration(seconds: 45));
 
+    if (response.statusCode == 401) _token = null;
     if (response.statusCode != 200) {
-      throw Exception("RPC call failed with status: ${response.statusCode}");
+      throw Exception(_errorText(response));
     }
 
     final data = jsonDecode(response.body);
@@ -44,6 +50,15 @@ class IpcClient {
     }
 
     return data;
+  }
+
+  String _errorText(http.Response response) {
+    try {
+      return jsonDecode(response.body)['error']?.toString() ??
+          'Request failed (${response.statusCode})';
+    } catch (_) {
+      return 'Request failed (${response.statusCode})';
+    }
   }
 
   Future<List<DownloadTask>> listTasks() async {
@@ -56,14 +71,20 @@ class IpcClient {
     await _loadToken();
     if (_token == null) throw Exception("IPC Token not found");
 
-    final response = await http.post(
-      Uri.parse('http://127.0.0.1:$_port/add'),
-      headers: {'Content-Type': 'application/json', 'X-Auth-Token': _token!},
-      body: jsonEncode({'source': url}),
-    );
+    final response = await http
+        .post(
+          Uri.parse('http://127.0.0.1:$_port/add'),
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Auth-Token': _token!,
+          },
+          body: jsonEncode({'source': url}),
+        )
+        .timeout(const Duration(seconds: 45));
 
+    if (response.statusCode == 401) _token = null;
     if (response.statusCode != 200) {
-      throw Exception("Add URL failed with status: ${response.statusCode}");
+      throw Exception(_errorText(response));
     }
 
     final data = jsonDecode(response.body);

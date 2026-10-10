@@ -36,12 +36,7 @@ async function getHeadersForUrl(url) {
   }
 }
 
-// Keep the service worker alive by creating an alarm that fires periodically.
-// MV3 service workers go dormant after ~30 seconds of inactivity, which breaks
-// the downloads.onCreated listener. This heartbeat prevents that.
 chrome.runtime.onInstalled.addListener(() => {
-  chrome.alarms.create("keepalive", { periodInMinutes: 0.4 });
-
   chrome.contextMenus.removeAll(() => {
     chrome.contextMenus.create({
       id: "send-to-dm",
@@ -49,12 +44,6 @@ chrome.runtime.onInstalled.addListener(() => {
       contexts: ["link"],
     });
   });
-});
-
-chrome.alarms.onAlarm.addListener((alarm) => {
-  if (alarm.name === "keepalive") {
-    // Just wake up the service worker - no real work needed
-  }
 });
 
 // Regular downloads: cancel the browser's own save and hand the URL to
@@ -66,7 +55,7 @@ chrome.downloads.onCreated.addListener(async (item) => {
   console.log("[DM] Intercepting download:", item.url);
 
   const headers = await getHeadersForUrl(item.url);
-  const result = await sendToNativeHost({ action: "add", source: item.url, filename: item.filename, headers });
+  const result = await sendToNativeHost({ action: "add", source: item.url, filename: item.filename ? item.filename.split(/[\\/]/).pop() : undefined, headers });
   console.log("[DM] Native host response:", result);
   
   if (result && result.ok) {

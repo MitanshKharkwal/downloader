@@ -1,93 +1,72 @@
-import os
-import struct
-import subprocess
-import sys
-import time
+"""Native-host tests never read or remove the user's real token."""
 
-_THIS_DIR = os.path.dirname(os.path.abspath(__file__))  # native_host/tests
-_PROJECT_ROOT = os.path.dirname(os.path.dirname(_THIS_DIR))  # download_manager/
-sys.path.insert(0, _PROJECT_ROOT)
-
+import io
 import json
+import struct
+from types import SimpleNamespace
+from unittest.mock import patch
 
-from core.ipc_server import IpcServer, load_or_create_token
+import pytest
 
-HOST_SCRIPT = os.path.join(_PROJECT_ROOT, "native_host", "host.py")
-APP_DATA_DIR = os.path.join(os.path.expanduser("~"), ".download_manager")
-TOKEN_PATH = os.path.join(APP_DATA_DIR, "ipc_token.txt")
-
-
-def run_host_once(message: dict) -> dict:
-    """Spawn host.py exactly like Chrome's sendNativeMessage does: write
-    one framed message to stdin, read one framed response from stdout,
-    let the process exit."""
-    proc = subprocess.Popen(
-        [sys.executable, HOST_SCRIPT],
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-    )
-    encoded = json.dumps(message).encode("utf-8")
-    proc.stdin.write(struct.pack("=I", len(encoded)))
-    proc.stdin.write(encoded)
-    proc.stdin.close()
-
-    raw_length = proc.stdout.read(4)
-    if len(raw_length) < 4:
-        stderr = proc.stderr.read().decode(errors="replace")
-        raise RuntimeError(f"host produced no valid response. stderr:\n{stderr}")
-    length = struct.unpack("=I", raw_length)[0]
-    data = proc.stdout.read(length)
-    proc.wait(timeout=5)
-    return json.loads(data.decode("utf-8"))
+from core.ipc_server import IpcServer
+from core.models import DownloadTask, DownloadType
+from native_host import host
 
 
-# --- Test 1: app not running yet (no token) -----------------------------
-os.makedirs(APP_DATA_DIR, exist_ok=True)
-if os.path.exists(TOKEN_PATH):
-    os.remove(TOKEN_PATH)
+@pytest.fixture
+def app(tmp_path, monkeypatch):
+    token = tmp_path / "token.txt"
+    token.write_text("test-token")
+    monkeypatch.setattr(host, "TOKEN_PATH", str(token))
+    received = []
 
-result = run_host_once({"action": "ping"})
-print("ping with no app running:", result)
-assert result == {"ok": True, "pong": True, "app_token_found": False}
+    def add(source, **kwargs):
+        received.append(source)
+        return DownloadTask(source, str(tmp_path / "output"), DownloadType.HTTP)
 
-result = run_host_once({"action": "add", "source": "magnet:?xt=urn:btih:deadbeef"})
-print("add with no app running:", result)
-assert result["ok"] is False
-
-# --- Test 2: app running, real IPC server --------------------------------
-received = []
-
-
-def add_callback(source: str) -> dict:
-    received.append(source)
-    return {"id": "abc123", "status": "queued"}
+    server = IpcServer(SimpleNamespace(add=add), "test-token", port=0)
+    monkeypatch.setattr(host, "IPC_PORT", server._server.server_port)
+    server.start()
+    yield received
+    server.stop()
 
 
-token = load_or_create_token(TOKEN_PATH)
-server = IpcServer(add_callback, token, port=47821)
-server.start()
-time.sleep(0.2)
+def test_ping_checks_daemon(app):
+    assert host.handle({"action": "ping"}) == {
+        "ok": True,
+        "pong": True,
+        "app_token_found": True,
+    }
 
-result = run_host_once({"action": "ping"})
-print("\nping with app running:", result)
-assert result == {"ok": True, "pong": True, "app_token_found": True}
 
-result = run_host_once(
-    {"action": "add", "source": "magnet:?xt=urn:btih:cafebabe", "filename": None}
+def test_native_add_round_trip(app):
+    result = host.handle({"action": "add", "source": "https://example.invalid/file"})
+    assert result["ok"]
+    assert app == ["https://example.invalid/file"]
+
+
+def test_ping_without_daemon_does_not_report_connected(tmp_path, monkeypatch):
+    token = tmp_path / "token.txt"
+    token.write_text("test-token")
+    monkeypatch.setattr(host, "TOKEN_PATH", str(token))
+    with patch.object(host, "_app_running", return_value=False):
+        assert not host.handle({"action": "ping"})["ok"]
+
+
+@pytest.mark.parametrize(
+    "payload", [b"a", struct.pack("=I", 2**22), struct.pack("=I", 10) + b"{}"]
 )
-print("add (magnet) with app running:", result)
-assert result["ok"] is True and result["id"] == "abc123"
-assert received == ["magnet:?xt=urn:btih:cafebabe"]
+def test_malformed_native_frame(payload):
+    with patch.object(host.sys, "stdin", SimpleNamespace(buffer=io.BytesIO(payload))):
+        with pytest.raises(ValueError):
+            host.read_message()
 
-result = run_host_once({"action": "add", "source": "https://example.com/file.zip"})
-print("add (http) with app running:", result)
-assert result["ok"] is True
-assert received == ["magnet:?xt=urn:btih:cafebabe", "https://example.com/file.zip"]
 
-result = run_host_once({"action": "bogus"})
-print("unknown action:", result)
-assert result["ok"] is False
-
-server.stop()
-print("\nnative host <-> IPC server integration test passed")
+def test_native_frame_round_trip():
+    data = json.dumps({"action": "ping"}).encode()
+    with patch.object(
+        host.sys,
+        "stdin",
+        SimpleNamespace(buffer=io.BytesIO(struct.pack("=I", len(data)) + data)),
+    ):
+        assert host.read_message() == {"action": "ping"}

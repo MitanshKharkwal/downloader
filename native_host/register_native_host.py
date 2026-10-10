@@ -27,23 +27,21 @@ import os
 import sys
 
 HOST_NAME = "com.downloadmanager.native_host"
-THIS_DIR = os.path.dirname(os.path.abspath(__file__))
+THIS_DIR = os.path.dirname(
+    sys.executable if getattr(sys, "frozen", False) else os.path.abspath(__file__)
+)
+DATA_DIR = os.environ.get("DOWNLOAD_MANAGER_DATA_DIR") or os.path.join(
+    os.path.expanduser("~"), ".download_manager"
+)
 
 
 def write_wrapper_bat() -> str:
-    bat_path = os.path.join(THIS_DIR, "run_host.bat")
+    bat_path = os.path.join(DATA_DIR, "run_host.bat")
     host_py = os.path.join(THIS_DIR, "host.py")
     # python.exe with -u is required for unbuffered I/O with native messaging pipes.
     # venv python is preferred, falls back to system python
-    content = (
-        "@echo off\r\n"
-        f'cd /d "{THIS_DIR}\\.."\r\n'
-        f'if exist "venv\\Scripts\\python.exe" (\r\n'
-        f'    "venv\\Scripts\\python.exe" -u "{host_py}"\r\n'
-        f") else (\r\n"
-        f'    python -u "{host_py}"\r\n'
-        f")\r\n"
-    )
+    content = f'@echo off\r\n"{sys.executable}" -u "{host_py}"\r\n'
+    os.makedirs(DATA_DIR, exist_ok=True)
     with open(bat_path, "w") as f:
         f.write(content)
     return bat_path
@@ -57,7 +55,8 @@ def write_manifest(executable_path: str, extension_id: str) -> str:
         "type": "stdio",
         "allowed_origins": [f"chrome-extension://{extension_id}/"],
     }
-    manifest_path = os.path.join(THIS_DIR, "native_host_manifest.json")
+    manifest_path = os.path.join(DATA_DIR, "native_host_manifest.json")
+    os.makedirs(DATA_DIR, exist_ok=True)
     with open(manifest_path, "w") as f:
         json.dump(manifest, f, indent=2)
     return manifest_path

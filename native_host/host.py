@@ -24,21 +24,29 @@ import time
 import urllib.error
 import urllib.request
 
-APP_DATA_DIR = os.path.join(os.path.expanduser("~"), ".download_manager")
-TOKEN_PATH = os.path.join(APP_DATA_DIR, "ipc_token.txt")
-IPC_PORT = 47821  # must match core/ipc_server.py's DEFAULT_PORT
-LAUNCH_CMD_FILE = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), "app_launch_command.txt"
+APP_DATA_DIR = os.environ.get("DOWNLOAD_MANAGER_DATA_DIR") or os.path.join(
+    os.path.expanduser("~"), ".download_manager"
 )
+TOKEN_PATH = os.path.join(APP_DATA_DIR, "ipc_token.txt")
+IPC_PORT = int(os.environ.get("DOWNLOAD_MANAGER_IPC_PORT", "47821"))
 
 
 def read_message() -> dict:
     raw_length = sys.stdin.buffer.read(4)
     if len(raw_length) == 0:
         sys.exit(0)  # Chrome closed the pipe
+    if len(raw_length) != 4:
+        raise ValueError("Incomplete message header")
     length = struct.unpack("=I", raw_length)[0]
+    if length > 1024 * 1024:
+        raise ValueError("Message too large")
     data = sys.stdin.buffer.read(length)
-    return json.loads(data.decode("utf-8"))
+    if len(data) != length:
+        raise ValueError("Incomplete message")
+    message = json.loads(data.decode("utf-8"))
+    if not isinstance(message, dict):
+        raise ValueError("Message must be an object")
+    return message
 
 
 def send_message(message: dict) -> None:
@@ -57,20 +65,31 @@ def _read_token() -> str | None:
 
 
 def _try_launch_app() -> None:
-    """Best-effort: if a launch command has been configured, start the
-    app. Silent no-op if it hasn't -- the caller just won't get a
-    successful retry and will report a clear error instead."""
-    if not os.path.exists(LAUNCH_CMD_FILE):
-        return
-    with open(LAUNCH_CMD_FILE) as f:
-        cmd = f.read().strip()
-    if cmd:
-        try:
-            subprocess.Popen(
-                cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-            )
-        except OSError:
-            pass
+    if getattr(sys, "frozen", False):
+        root = os.path.dirname(os.path.dirname(sys.executable))
+        command = [os.path.join(root, "downloader-daemon.exe")]
+    else:
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        command = [sys.executable, os.path.join(root, "daemon.py")]
+    try:
+        subprocess.Popen(
+            command,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0,
+        )
+    except OSError:
+        pass
+
+
+def _app_running() -> bool:
+    try:
+        with urllib.request.urlopen(
+            f"http://127.0.0.1:{IPC_PORT}/ping", timeout=2
+        ) as response:
+            return json.loads(response.read()).get("app") == "download-manager"
+    except (OSError, ValueError):
+        return False
 
 
 def post_to_app(
@@ -81,6 +100,13 @@ def post_to_app(
     delay: float = 0.6,
 ) -> dict:
     token = _read_token()
+    if token is None:
+        _try_launch_app()
+        for _ in range(20):
+            time.sleep(0.5)
+            token = _read_token()
+            if token:
+                break
     if token is None:
         return {
             "ok": False,
@@ -140,7 +166,11 @@ def handle(message: dict) -> dict:
     action = message.get("action")
 
     if action == "ping":
-        return {"ok": True, "pong": True, "app_token_found": _read_token() is not None}
+        return {
+            "ok": _app_running(),
+            "pong": True,
+            "app_token_found": _read_token() is not None,
+        }
 
     if action == "add":
         source = message.get("source")
@@ -154,8 +184,11 @@ def handle(message: dict) -> dict:
 
 
 def main() -> None:
-    message = read_message()
-    send_message(handle(message))
+    try:
+        message = read_message()
+        send_message(handle(message))
+    except (ValueError, OSError) as exc:
+        send_message({"ok": False, "error": str(exc)})
 
 
 if __name__ == "__main__":

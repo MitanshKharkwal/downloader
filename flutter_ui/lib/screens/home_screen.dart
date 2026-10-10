@@ -26,6 +26,9 @@ class _HomeScreenState extends State<HomeScreen> {
   List<DownloadTask> _all = <DownloadTask>[];
   List<DownloadTask> _visible = <DownloadTask>[];
   bool _isConnected = true;
+  bool _fetching = false;
+  DateTime _retryAt = DateTime.fromMillisecondsSinceEpoch(0);
+  int _failures = 0;
 
   final TextEditingController _searchController = TextEditingController();
 
@@ -130,8 +133,11 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _fetchTasks() async {
+    if (_fetching || DateTime.now().isBefore(_retryAt)) return;
+    _fetching = true;
     try {
       final tasks = await _ipcClient.listTasks();
+      _failures = 0;
       if (mounted) {
         setState(() {
           _isConnected = true;
@@ -140,9 +146,13 @@ class _HomeScreenState extends State<HomeScreen> {
         });
       }
     } catch (e) {
+      _failures = (_failures + 1).clamp(1, 5);
+      _retryAt = DateTime.now().add(Duration(seconds: 1 << _failures));
       if (mounted && _isConnected) {
         setState(() => _isConnected = false);
       }
+    } finally {
+      _fetching = false;
     }
   }
 
@@ -185,6 +195,10 @@ class _HomeScreenState extends State<HomeScreen> {
             Animation<double> secondaryAnimation,
           ) {
             return AddUrlDialog(
+              onAddVideo: (url, format) async {
+                await _ipcClient.addVideoTask(url, format);
+                await _fetchTasks();
+              },
               onAdd: (String url) async {
                 // onAdd is now async — throws on error so dialog can show it inline
                 await _ipcClient.addUrl(url);
@@ -352,27 +366,27 @@ class _HomeScreenState extends State<HomeScreen> {
                   compact: compact,
                   onPause: (DownloadTask t) async {
                     await _ipcClient.pauseTask(t.id);
-                    _fetchTasks();
+                    await _fetchTasks();
                   },
                   onResume: (DownloadTask t) async {
                     await _ipcClient.resumeTask(t.id);
-                    _fetchTasks();
+                    await _fetchTasks();
                   },
                   onRetry: (DownloadTask t) async {
                     await _ipcClient.retryTask(t.id);
-                    _fetchTasks();
+                    await _fetchTasks();
                   },
                   onCancel: (DownloadTask t) async {
                     await _ipcClient.cancelTask(t.id);
-                    _fetchTasks();
+                    await _fetchTasks();
                   },
                   onRemove: (DownloadTask t) async {
                     await _ipcClient.removeTask(t.id);
-                    _fetchTasks();
+                    await _fetchTasks();
                   },
                   onPriority: (DownloadTask t, int p) async {
                     await _ipcClient.setPriority(t.id, p);
-                    _fetchTasks();
+                    await _fetchTasks();
                   },
                 ),
         ),

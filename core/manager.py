@@ -12,7 +12,6 @@ import hashlib
 import json
 import os
 import re
-import shutil
 import tempfile
 import threading
 import time
@@ -24,27 +23,14 @@ import requests
 from .events import EventEmitter
 from .http_downloader import HttpDownload
 from .models import DownloadStatus, DownloadTask, DownloadType, Priority
+from .paths import cleanup_task_files, safe_filename, unique_path
 from .torrent_engine import TorrentDownload, TorrentSession
 
 _MAGNET_RE = re.compile(r"^magnet:\?", re.IGNORECASE)
 
 
 def _cleanup_offline_task(task: DownloadTask) -> None:
-    for path in (task.dest_path + ".part", task.dest_path + ".dmpart.json"):
-        try:
-            if os.path.exists(path):
-                os.remove(path)
-        except OSError:
-            pass
-
-    if os.path.exists(task.dest_path):
-        try:
-            if os.path.isdir(task.dest_path):
-                shutil.rmtree(task.dest_path, ignore_errors=True)
-            else:
-                os.remove(task.dest_path)
-        except OSError:
-            pass
+    cleanup_task_files(task)
 
 
 class TokenBucket:
@@ -69,13 +55,17 @@ class TokenBucket:
             self._tokens = float(value)
             self._last_fill = time.time()
 
-    def consume(self, tokens: int) -> None:
+    def consume(self, tokens: int, cancel_event=None) -> None:
         """Blocks until `tokens` are available. If rate is 0, does not block."""
         if self._rate <= 0:
             return
 
         while True:
+            if cancel_event is not None and cancel_event.is_set():
+                return
             with self._lock:
+                if self._rate <= 0:
+                    return
                 now = time.time()
                 elapsed = now - self._last_fill
                 max_tokens = max(self._capacity, tokens)
@@ -90,7 +80,7 @@ class TokenBucket:
                 wait_time = (tokens - self._tokens) / self._rate
 
             # Wait outside the lock
-            time.sleep(max(0.001, wait_time))
+            time.sleep(min(0.1, max(0.001, wait_time)))
 
 
 class DownloadManager:
@@ -115,6 +105,7 @@ class DownloadManager:
             "scheduler_end_hour": 6,
             "pause_on_metered": False,
             "auto_extract": True,
+            "category_dirs": {},
         }
 
         self.rate_limiter = TokenBucket(global_bandwidth_limit)
@@ -126,7 +117,14 @@ class DownloadManager:
 
         self._tasks: dict[str, DownloadTask] = {}
         self._engines: dict[str, HttpDownload | TorrentDownload | Any] = {}
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
+        self._operations = threading.RLock()
+        self._stop_event = threading.Event()
+        self._policy_paused: set[str] = set()
+        self._metered = False
+        self._suspend_starts = False
+        self._urgent_task_id: str | None = None
+        self._paused_for_urgent_task_ids: set[str] = set()
 
         self.events.on("status", self._on_task_status_changed)
         self._load_state()
@@ -136,9 +134,6 @@ class DownloadManager:
         )
         self._scheduler_thread.start()
 
-        self._urgent_task_id: str | None = None
-        self._paused_for_urgent_task_ids: set[str] = set()
-
     # -- public API --------------------------------------------------------
 
     def apply_config(self) -> None:
@@ -146,10 +141,13 @@ class DownloadManager:
             return
         config = self.app_config  # type: ignore
         self.download_dir = str(config.get("download_dir"))
-        self._max_concurrent = int(config.get("max_concurrent"))
+        self.max_concurrent_downloads = int(config.get("max_concurrent"))
+        self._config["max_concurrent_downloads"] = self.max_concurrent_downloads
+        self._config["download_dir"] = self.download_dir
 
         limit_kbps = int(config.get("max_bandwidth_kbps"))
         limit_bps = limit_kbps * 1024 if limit_kbps > 0 else None
+        self._config["global_bandwidth_limit"] = limit_bps or 0
         self.rate_limiter.rate = limit_bps or 0
         if self._torrent_session:
             self._torrent_session.set_download_rate_limit(limit_bps or 0)
@@ -157,6 +155,74 @@ class DownloadManager:
         self._maybe_start_next()
 
     def add(
+        self, source: str, dest_dir=None, filename=None, headers=None
+    ) -> DownloadTask:
+        with self._operations:
+            if not isinstance(source, str) or not source.strip():
+                raise ValueError("Source must be a URL, magnet, or torrent file")
+            source = source.strip()
+            parsed = urlparse(source)
+            if not (
+                _MAGNET_RE.match(source)
+                or (parsed.scheme in ("http", "https") and parsed.netloc)
+                or (source.lower().endswith(".torrent") and os.path.isfile(source))
+            ):
+                raise ValueError(
+                    "Source must be an HTTP(S) URL, magnet, or existing torrent file"
+                )
+            if headers is not None and (
+                not isinstance(headers, dict)
+                or not all(
+                    isinstance(k, str) and isinstance(v, str)
+                    for k, v in headers.items()
+                )
+            ):
+                raise ValueError("Headers must contain text keys and values")
+            return self._add(source, dest_dir, filename, headers)
+
+    def reserve_filename(self, task: DownloadTask, name: str) -> str:
+        with self._lock:
+            if safe_filename(name) == os.path.basename(task.dest_path):
+                return task.dest_path
+            task.dest_path = unique_path(
+                os.path.dirname(task.dest_path),
+                name,
+                [t.dest_path for t in self._tasks.values() if t.id != task.id],
+            )
+            return task.dest_path
+
+    def add_video(
+        self, url: str, format_id="best", filename="video.mp4"
+    ) -> DownloadTask:
+        if (
+            not isinstance(url, str)
+            or urlparse(url).scheme not in ("http", "https")
+            or not urlparse(url).netloc
+        ):
+            raise ValueError("Video URL must be HTTP or HTTPS")
+        if format_id not in ("best", "worst", "bestaudio"):
+            raise ValueError("Unsupported video format")
+        with self._operations, self._lock:
+            directory = self._config.get("category_dirs", {}).get(
+                "Video"
+            ) or os.path.join(self.download_dir, "Video")
+            os.makedirs(directory, exist_ok=True)
+            task = DownloadTask(
+                source=f"ytdlp||{format_id}||{url}",
+                dest_path=unique_path(
+                    directory, filename, [t.dest_path for t in self._tasks.values()]
+                ),
+                type=DownloadType.VIDEO,
+                category="Video",
+                filename_is_explicit=True,
+            )
+            self._tasks[task.id] = task
+        self._save_state()
+        self.events.emit("added", task)
+        self._maybe_start_next()
+        return task
+
+    def _add(
         self,
         source: str,
         dest_dir: str | None = None,
@@ -194,13 +260,7 @@ class DownloadManager:
         filename_is_explicit = filename is not None
 
         if not is_torrent:
-            name = filename or self._filename_from_url(source)
-            name = re.sub(r'[<>:"/\\|?*]', "_", name)
-            if len(name) > 150:
-                base, ext = os.path.splitext(name)
-                if len(ext) > 20:
-                    ext = ""
-                name = base[: 150 - len(ext)] + ext
+            name = safe_filename(filename or self._filename_from_url(source))
 
             category = ""
             ext = os.path.splitext(name)[1].lower()
@@ -254,8 +314,13 @@ class DownloadManager:
                 ):
                     if task.source == source or task.source == normalized_source:
                         if task.type == DownloadType.TORRENT:
-                            if os.path.abspath(task.dest_path) == os.path.abspath(
-                                dest_dir
+                            if os.path.abspath(
+                                os.path.dirname(task.dest_path)
+                                if task.owns_dest_dir
+                                else task.dest_path
+                            ) == os.path.abspath(
+                                self._config.get("category_dirs", {}).get("Torrents")
+                                or dest_dir
                             ):
                                 return task
                         else:
@@ -296,14 +361,10 @@ class DownloadManager:
 
             os.makedirs(final_dest_dir, exist_ok=True)
 
-            base, ext = os.path.splitext(name)
-            target_path = os.path.join(final_dest_dir, name)
-            counter = 1
-            while os.path.exists(target_path) or os.path.exists(
-                target_path + ".dmpart"
-            ):
-                target_path = os.path.join(final_dest_dir, f"{base} ({counter}){ext}")
-                counter += 1
+            with self._lock:
+                target_path = unique_path(
+                    final_dest_dir, name, [t.dest_path for t in self._tasks.values()]
+                )
 
             task = DownloadTask(
                 source=source,
@@ -316,39 +377,68 @@ class DownloadManager:
             )
 
         with self._lock:
+            if task.type == DownloadType.TORRENT:
+                task.dest_path = os.path.join(task.dest_path, task.id)
+                task.owns_dest_dir = True
+            else:
+                task.dest_path = unique_path(
+                    os.path.dirname(task.dest_path),
+                    os.path.basename(task.dest_path),
+                    [t.dest_path for t in self._tasks.values()],
+                )
             self._tasks[task.id] = task
         self._save_state()
         self.events.emit("added", task)
         self._maybe_start_next()
         return task
 
-    def pause(self, task_id: str) -> None:
-        with self._lock:
-            task = self._tasks.get(task_id)
-            if task:
+    def pause(self, task_id: str, *, policy: bool = False) -> None:
+        with self._operations:
+            task = self.get(task_id)
+            if not task:
+                return
+            if not policy:
+                self._policy_paused.discard(task_id)
                 task.was_paused_for_urgent = False
-        engine = self._engines.get(task_id)
-        if engine:
-            engine.pause()
-
-    def resume(self, task_id: str) -> None:
-        engine = self._engines.get(task_id)
-        if engine:
-            engine.resume()
-        else:
-            # Was queued (never started) or app restarted -- just (re)start it.
-            self._start_task(self._tasks[task_id])
-
-    def pause_all(self) -> None:
-        with self._lock:
-            tasks = list(self._tasks.values())
-        for task in tasks:
-            if task.status in (
+            if task.status not in (
+                DownloadStatus.CONNECTING,
                 DownloadStatus.DOWNLOADING,
                 DownloadStatus.QUEUED,
-                DownloadStatus.CONNECTING,
             ):
-                self.pause(task.id)
+                return
+            engine = self._engines.get(task_id)
+            if engine:
+                engine.pause()
+            else:
+                task.status = DownloadStatus.PAUSED
+                self.events.emit("status", task)
+            task.speed_bps = 0
+            if policy:
+                self._policy_paused.add(task_id)
+            self._save_state()
+        self._maybe_start_next()
+
+    def resume(self, task_id: str) -> None:
+        with self._operations:
+            task = self.get(task_id)
+            if not task or task.status not in (
+                DownloadStatus.PAUSED,
+                DownloadStatus.QUEUED,
+            ):
+                return
+            task.status = DownloadStatus.QUEUED
+            self._policy_paused.discard(task_id)
+            self._save_state()
+        self._maybe_start_next()
+
+    def pause_all(self) -> None:
+        with self._operations:
+            self._suspend_starts = True
+            try:
+                for task in self.list_tasks():
+                    self.pause(task.id)
+            finally:
+                self._suspend_starts = False
 
     def resume_all(self) -> None:
         with self._lock:
@@ -357,41 +447,45 @@ class DownloadManager:
             if task.status == DownloadStatus.PAUSED:
                 self.resume(task.id)
 
-    def cancel(self, task_id: str, delete_files: bool = True) -> None:
-        engine = self._engines.get(task_id)
-        if engine:
-            engine.cancel(delete_files=delete_files)
-        else:
-            task = self._tasks.get(task_id)
-            if task:
-                task.status = DownloadStatus.CANCELED
-                if delete_files:
-                    _cleanup_offline_task(task)
-        self._maybe_start_next()
+    def cancel(self, task_id: str, delete_files: bool = False) -> None:
+        with self._operations:
+            task = self.get(task_id)
+            if not task:
+                return
+            engine = self._engines.pop(task_id, None)
+            if engine:
+                engine.cancel(delete_files=delete_files)
+            elif delete_files:
+                _cleanup_offline_task(task)
+            task.status = DownloadStatus.CANCELED
+            task.speed_bps = 0
+            self._policy_paused.discard(task_id)
+            self._save_state()
+        self.events.emit("status", task)
 
     def retry(self, task_id: str) -> None:
-        """Retry a failed or completed download."""
-        task = None
-        with self._lock:
-            task = self._tasks.get(task_id)
-            if task and task.status in (DownloadStatus.ERROR, DownloadStatus.COMPLETED):
-                if task.status == DownloadStatus.COMPLETED:
-                    _cleanup_offline_task(task)
-                task.status = DownloadStatus.QUEUED
-                task.error_message = ""
-                task.downloaded_bytes = 0
-                task.total_bytes = 0
-                task.completed_at = None
-            else:
-                task = None  # not retryable
-
-        if task is not None:
+        with self._operations:
+            task = self.get(task_id)
+            if not task or task.status not in (
+                DownloadStatus.ERROR,
+                DownloadStatus.COMPLETED,
+                DownloadStatus.CANCELED,
+            ):
+                return
+            engine = self._engines.pop(task_id, None)
+            if engine:
+                engine.stop_threads()
+            if task.status == DownloadStatus.COMPLETED:
+                _cleanup_offline_task(task)
+            task.status = DownloadStatus.QUEUED
+            task.error_message = ""
+            task.downloaded_bytes = 0
+            task.total_bytes = 0
+            task.completed_at = None
             self._save_state()
-            self.events.emit("status", task)
-            self._maybe_start_next()
+        self._maybe_start_next()
 
     def set_priority(self, task_id: str, priority: Priority) -> None:
-        engine = None
         with self._lock:
             task = self._tasks.get(task_id)
             if not task or task.priority == priority:
@@ -406,21 +500,6 @@ class DownloadManager:
                     task.num_connections = 2
                 else:
                     task.num_connections = 8
-
-            is_active = task.status in (
-                DownloadStatus.CONNECTING,
-                DownloadStatus.DOWNLOADING,
-            )
-
-            if is_active and task.type == DownloadType.HTTP:
-                engine = self._engines.pop(task.id, None)
-                task.status = DownloadStatus.QUEUED
-
-        if engine:
-            if hasattr(engine, "stop_threads"):
-                engine.stop_threads()
-                if hasattr(engine, "_controller_thread") and engine._controller_thread:
-                    engine._controller_thread.join(timeout=2.0)
 
         self._save_state()
         self.events.emit("status", task)
@@ -445,6 +524,9 @@ class DownloadManager:
 
         for tid in list(self._paused_for_urgent_task_ids):
             self.pause(tid)
+            paused_task = self.get(tid)
+            if paused_task:
+                paused_task.was_paused_for_urgent = True
 
         self.set_priority(task_id, Priority.HIGH)
 
@@ -462,36 +544,22 @@ class DownloadManager:
             self._maybe_start_next()
 
     def clear_finished(self) -> None:
-        """Remove all completed, errored, or canceled tasks from the list."""
-        with self._lock:
-            to_remove = [
-                tid
-                for tid, t in self._tasks.items()
-                if t.status
-                in (
-                    DownloadStatus.COMPLETED,
-                    DownloadStatus.ERROR,
-                    DownloadStatus.CANCELED,
-                )
-            ]
-            for tid in to_remove:
-                self._tasks.pop(tid, None)
-
-        if to_remove:
-            self._save_state()
-            self.events.emit("tasks_cleared", to_remove)
+        for task in self.list_tasks():
+            if task.status in (
+                DownloadStatus.COMPLETED,
+                DownloadStatus.ERROR,
+                DownloadStatus.CANCELED,
+            ):
+                self.remove_task(task.id)
 
     def remove_task(self, task_id: str, delete_files: bool = False) -> None:
-        """Remove a specific task from the list, optionally deleting its files."""
-        with self._lock:
-            task = self._tasks.get(task_id)
-            if not task:
+        with self._operations:
+            if not self.get(task_id):
                 return
-            if delete_files:
-                _cleanup_offline_task(task)
-            self._tasks.pop(task_id, None)
-
-        self._save_state()
+            self.cancel(task_id, delete_files=delete_files)
+            with self._lock:
+                self._tasks.pop(task_id, None)
+            self._save_state()
         self.events.emit("tasks_cleared", [task_id])
 
     def get(self, task_id: str) -> DownloadTask | None:
@@ -503,20 +571,80 @@ class DownloadManager:
             return list(self._tasks.values())
 
     def shutdown(self) -> None:
+        self._stop_event.set()
+        if self._scheduler_thread is not threading.current_thread():
+            self._scheduler_thread.join()
         for task_id in list(self._engines):
             self.pause(task_id)
+        for engine in list(self._engines.values()):
+            engine.stop_threads()
+        self._engines.clear()
         self._torrent_session.shutdown()
         self._save_state()
 
     def set_global_speed_limit(self, limit_bps: int) -> None:
+        self._config["global_bandwidth_limit"] = limit_bps
         self.rate_limiter.rate = limit_bps
         self._torrent_session.set_download_rate_limit(limit_bps)
+        self._rebalance_bandwidth()
         self._save_state()
+
+    def _rebalance_bandwidth(self):
+        limit = self._config["global_bandwidth_limit"]
+        active = [
+            t
+            for t in self.list_tasks()
+            if t.status in (DownloadStatus.CONNECTING, DownloadStatus.DOWNLOADING)
+        ]
+        torrents = any(t.type == DownloadType.TORRENT for t in active)
+        streams = any(t.type != DownloadType.TORRENT for t in active)
+        torrent_limit = max(1, limit // 2) if limit and torrents and streams else limit
+        stream_limit = (
+            max(1, limit - torrent_limit) if limit and torrents and streams else limit
+        )
+        if self.rate_limiter.rate != stream_limit:
+            self.rate_limiter.rate = stream_limit
+        self._torrent_session.set_download_rate_limit(torrent_limit)
 
     def get_config(self) -> dict:
         return self._config.copy()
 
     def set_config(self, config: dict) -> None:
+        if not isinstance(config, dict):
+            raise ValueError("Config must be an object")
+        allowed = set(self._config) | {"category_dirs"}
+        if set(config) - allowed:
+            raise ValueError("Unknown configuration setting")
+        for key, value in config.items():
+            if key in (
+                "max_concurrent_downloads",
+                "global_bandwidth_limit",
+                "scheduler_start_hour",
+                "scheduler_end_hour",
+            ):
+                maximum = (
+                    100
+                    if key == "max_concurrent_downloads"
+                    else 23
+                    if "hour" in key
+                    else 10**12
+                )
+                minimum = 1 if key == "max_concurrent_downloads" else 0
+                if type(value) is not int or not minimum <= value <= maximum:
+                    raise ValueError(f"Invalid {key}")
+            elif key in ("scheduler_enabled", "pause_on_metered", "auto_extract"):
+                if type(value) is not bool:
+                    raise ValueError(f"Invalid {key}")
+            elif key == "download_dir":
+                if not isinstance(value, str) or not value.strip():
+                    raise ValueError("Download directory is required")
+                os.makedirs(value, exist_ok=True)
+            elif key == "category_dirs":
+                if not isinstance(value, dict) or not all(
+                    isinstance(k, str) and isinstance(v, str) and v.strip()
+                    for k, v in value.items()
+                ):
+                    raise ValueError("Category directories must be paths")
         self._config.update(config)
 
         if "download_dir" in config:
@@ -531,71 +659,76 @@ class DownloadManager:
         self._maybe_start_next()
 
         if hasattr(self, "app_config"):
-            self.app_config.update(config)
+            self.app_config.update(
+                {
+                    **config,
+                    "max_concurrent": self.max_concurrent_downloads,
+                    "max_bandwidth_kbps": self._config["global_bandwidth_limit"]
+                    // 1024,
+                }
+            )
 
     # -- scheduling ----------------------------------------------------------
 
     def _run_scheduler(self):
         """Background thread that enforces the smart schedule (e.g. download only at night)."""
-        import datetime
-
-        was_in_schedule = None
-        was_metered = False
-
-        while True:
-            config = self.get_config()
-
-            # Feature 6: Metered connection awareness
-            is_metered = False
+        while not self._stop_event.is_set():
+            with self._operations:
+                for task in self.list_tasks():
+                    if task.status in (
+                        DownloadStatus.COMPLETED,
+                        DownloadStatus.ERROR,
+                        DownloadStatus.CANCELED,
+                    ):
+                        engine = self._engines.pop(task.id, None)
+                        if engine:
+                            engine.stop_threads()
+            self._rebalance_bandwidth()
+            self._metered = False
             try:
-                from winrt.windows.networking.connectivity import (  # type: ignore
+                from winrt.windows.networking.connectivity import (
                     NetworkCostType,
                     NetworkInformation,
                 )
 
                 profile = NetworkInformation.get_internet_connection_profile()
-                if profile:
-                    cost = profile.get_connection_cost()
-                    is_metered = cost.network_cost_type != NetworkCostType.UNRESTRICTED
+                self._metered = bool(
+                    profile
+                    and profile.get_connection_cost().network_cost_type
+                    != NetworkCostType.UNRESTRICTED
+                )
+            except ImportError:
+                pass
             except Exception:
                 pass
-
-            if config.get("pause_on_metered", True) and is_metered:
-                if not was_metered:
-                    self.pause_all()
-                    was_metered = True
-                time.sleep(60)
-                continue
-            elif was_metered:
-                self.resume_all()
-                was_metered = False
-
-            if config.get("scheduler_enabled"):
-                start_h = config.get("scheduler_start_hour", 2)
-                end_h = config.get("scheduler_end_hour", 6)
-
-                now = datetime.datetime.now().hour
-
-                # Check if current hour is in schedule
-                if start_h <= end_h:
-                    in_schedule = start_h <= now < end_h
-                else:
-                    # Wraps around midnight (e.g. 22:00 to 06:00)
-                    in_schedule = now >= start_h or now < end_h
-
-                if not in_schedule:
-                    # Outside schedule, pause active tasks
-                    self.pause_all()
-                    was_in_schedule = False
-                else:
-                    # Inside schedule, resume paused/queued tasks if we just entered schedule
-                    if was_in_schedule is False:
-                        self.resume_all()
-                    was_in_schedule = True
+            if not self._downloads_allowed():
+                for task in self.list_tasks():
+                    if task.status in (
+                        DownloadStatus.CONNECTING,
+                        DownloadStatus.DOWNLOADING,
+                    ):
+                        self.pause(task.id, policy=True)
             else:
-                was_in_schedule = None
+                for tid in list(self._policy_paused):
+                    self.resume(tid)
+                self._maybe_start_next()
+            self._stop_event.wait(1)
 
-            time.sleep(60)
+    def _downloads_allowed(self) -> bool:
+        import datetime
+
+        config = self.get_config()
+        if (
+            self._stop_event.is_set()
+            or self._suspend_starts
+            or (config.get("pause_on_metered") and self._metered)
+        ):
+            return False
+        if not config.get("scheduler_enabled"):
+            return True
+        start, end = config["scheduler_start_hour"], config["scheduler_end_hour"]
+        hour = datetime.datetime.now().hour
+        return start <= hour < end if start <= end else hour >= start or hour < end
 
     def _active_count(self) -> int:
         return sum(
@@ -605,84 +738,58 @@ class DownloadManager:
         )
 
     def _maybe_start_next(self) -> None:
-        with self._lock:
-            if self._active_count() >= self.max_concurrent_downloads:
-                return
+        # Serialize starts with user actions; callbacks from worker threads only
+        # wake the scheduler, so stopping a worker cannot deadlock on this lock.
+        with self._operations:
+            while self._downloads_allowed():
+                with self._lock:
+                    if self._active_count() >= self.max_concurrent_downloads:
+                        return
+                    queued = sorted(
+                        (
+                            t
+                            for t in self._tasks.values()
+                            if t.status == DownloadStatus.QUEUED
+                        ),
+                        key=lambda t: (-t.priority.value, t.created_at),
+                    )
+                    if not queued:
+                        return
+                    task = queued[0]
+                    existing = self._engines.get(task.id)
+                    if existing:
+                        task.status = DownloadStatus.PAUSED
+                        existing.resume()
+                        if task.status == DownloadStatus.PAUSED:
+                            return
+                        continue
+                    task.status = DownloadStatus.CONNECTING
+                    task.speed_bps = 0
+                    if task.type == DownloadType.HTTP:
+                        engine = HttpDownload(
+                            task,
+                            self.events,
+                            num_connections=task.num_connections,
+                            headers=task.headers,
+                            rate_limiter=self.rate_limiter,
+                            reserve_filename=self.reserve_filename,
+                        )
+                    elif task.type == DownloadType.VIDEO:
+                        from .video_downloader import VideoDownload
 
-            config = self.get_config()
-            if config.get("scheduler_enabled"):
-                import datetime
-
-                start_h = config.get("scheduler_start_hour", 2)
-                end_h = config.get("scheduler_end_hour", 6)
-                now = datetime.datetime.now().hour
-                if start_h <= end_h:
-                    in_schedule = start_h <= now < end_h
-                else:
-                    in_schedule = now >= start_h or now < end_h
-
-                if not in_schedule:
-                    return
-
-            queued_tasks = [
-                t for t in self._tasks.values() if t.status == DownloadStatus.QUEUED
-            ]
-            if not queued_tasks:
-                return
-
-            # Highest priority first, then oldest first
-            queued_tasks.sort(key=lambda t: (-t.priority.value, t.created_at))
-            next_task = queued_tasks[0]
-
-            # Claim the slot immediately so concurrent threads don't over-fill
-            next_task.status = DownloadStatus.CONNECTING
-            next_task.speed_bps = 0.0
-
-            # Instantiate engine and register it inside the lock so cancel()
-            # knows it exists before we even start it.
-            engine: Any = None
-            if next_task.type == DownloadType.HTTP:
-                engine = HttpDownload(
-                    next_task,
-                    self.events,
-                    num_connections=next_task.num_connections,
-                    headers=next_task.headers,
-                    rate_limiter=self.rate_limiter,
-                )
-            elif next_task.type == DownloadType.VIDEO:
-                from core.video_downloader import VideoDownload
-
-                engine = VideoDownload(next_task, self.events)
-            else:
-                engine = TorrentDownload(next_task, self.events, self._torrent_session)
-            self._engines[next_task.id] = engine
-
-        # start() touches engines/threads -- do it outside the lock so a
-        # slow engine.start() call can't hold up other callers of add()/cancel().
-        engine.start()
+                        engine = VideoDownload(
+                            task, self.events, rate_limiter=self.rate_limiter
+                        )
+                    else:
+                        engine = TorrentDownload(
+                            task, self.events, self._torrent_session
+                        )
+                    self._engines[task.id] = engine
+                self._rebalance_bandwidth()
+                engine.start()
 
     def _start_task(self, task: DownloadTask) -> None:
-        """Directly start a specific task (used by resume() for paused tasks)."""
-        with self._lock:
-            task.status = DownloadStatus.CONNECTING
-            task.speed_bps = 0.0
-            engine: Any = None
-            if task.type == DownloadType.HTTP:
-                engine = HttpDownload(
-                    task,
-                    self.events,
-                    num_connections=task.num_connections,
-                    headers=task.headers,
-                    rate_limiter=self.rate_limiter,
-                )
-            elif task.type == DownloadType.VIDEO:
-                from core.video_downloader import VideoDownload
-
-                engine = VideoDownload(task, self.events)
-            else:
-                engine = TorrentDownload(task, self.events, self._torrent_session)
-            self._engines[task.id] = engine
-        engine.start()
+        self.resume(task.id)
 
     def _on_task_status_changed(self, task: DownloadTask) -> None:
         self._save_state()
@@ -751,24 +858,11 @@ class DownloadManager:
 
                 threading.Thread(target=show_toast, daemon=True).start()
 
-            if task.id == getattr(self, "_urgent_task_id", None) and task.status in (
-                DownloadStatus.COMPLETED,
-                DownloadStatus.ERROR,
-                DownloadStatus.CANCELED,
-            ):
+            if task.id == getattr(self, "_urgent_task_id", None):
                 self._urgent_task_id = None
-                for tid in list(getattr(self, "_paused_for_urgent_task_ids", [])):
-                    with self._lock:
-                        t = self._tasks.get(tid)
-                        should_resume = t and getattr(t, "was_paused_for_urgent", False)
-                        if should_resume and t:
-                            t.was_paused_for_urgent = False
-                    if should_resume:
-                        self.resume(tid)
-                if hasattr(self, "_paused_for_urgent_task_ids"):
-                    self._paused_for_urgent_task_ids.clear()
-
-            self._maybe_start_next()
+                for tid in self._paused_for_urgent_task_ids:
+                    self._policy_paused.add(tid)
+                self._paused_for_urgent_task_ids.clear()
 
     # -- helpers -------------------------------------------------------------
 
@@ -815,7 +909,8 @@ class DownloadManager:
                 tasks_manifest = [t.to_dict() for t in self._tasks.values()]
                 state = {"config": self.get_config(), "tasks": tasks_manifest}
                 tmp_file = self.state_file + ".tmp"
-                with open(tmp_file, "w") as f:
+                fd = os.open(tmp_file, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+                with os.fdopen(fd, "w") as f:
                     json.dump(state, f, indent=2, default=str)
                 os.replace(tmp_file, self.state_file)
             except OSError:
@@ -883,7 +978,10 @@ class DownloadManager:
         import json
 
         with self._lock:
-            tasks_manifest = [t.to_dict() for t in self._tasks.values()]
+            tasks_manifest = [
+                {k: v for k, v in t.to_dict().items() if k != "headers"}
+                for t in self._tasks.values()
+            ]
         with open(file_path, "w") as f:
             json.dump(tasks_manifest, f, indent=2, default=str)
 

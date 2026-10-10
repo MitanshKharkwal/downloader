@@ -130,6 +130,11 @@ class TorrentDownload:
 
     def stop_threads(self) -> None:
         self._stop_event.set()
+        if self._poll_thread and self._poll_thread is not threading.current_thread():
+            self._poll_thread.join()
+        if self._handle and self._handle.is_valid():
+            self._session.remove_torrent(self._handle)
+            self._handle = None
 
     def pause(self) -> None:
         if self.task.status in (
@@ -153,20 +158,18 @@ class TorrentDownload:
 
     def cancel(self, delete_files: bool = False) -> None:
         self._stop_event.set()
+        if self._poll_thread and self._poll_thread is not threading.current_thread():
+            self._poll_thread.join()
         if self._handle:
             flag = lt.session.delete_files if delete_files else 0
             self._session.remove_torrent(self._handle, flag)
+            self._handle = None
         elif delete_files:
-            try:
-                if os.path.exists(self.task.dest_path):
-                    if os.path.isdir(self.task.dest_path):
-                        import shutil
+            from .paths import cleanup_task_files
 
-                        shutil.rmtree(self.task.dest_path, ignore_errors=True)
-                    else:
-                        os.remove(self.task.dest_path)
-            except OSError:
-                pass
+            cleanup_task_files(self.task)
+        if self._poll_thread and self._poll_thread is not threading.current_thread():
+            self._poll_thread.join()
         self.task.status = DownloadStatus.CANCELED
         self.events.emit("status", self.task)
 
@@ -191,11 +194,23 @@ class TorrentDownload:
 
     def _poll_loop(self) -> None:
         while not self._stop_event.is_set():
-            time.sleep(POLL_INTERVAL_SECONDS)
+            if self._stop_event.wait(POLL_INTERVAL_SECONDS):
+                break
             if not self._handle or not self._handle.is_valid():
                 continue
 
-            status = self._handle.status()
+            try:
+                status = self._handle.status()
+            except RuntimeError:
+                if self._stop_event.is_set():
+                    return
+                raise
+            if status.errc.value():
+                self.task.status = DownloadStatus.ERROR
+                self.task.error_message = status.errc.message()
+                self.task.speed_bps = 0
+                self.events.emit("status", self.task)
+                return
             self.task.name = status.name or self.task.name
             self.task.total_bytes = status.total_wanted or self.task.total_bytes
             self.task.downloaded_bytes = status.total_wanted_done
@@ -220,6 +235,8 @@ class TorrentDownload:
             self.events.emit("progress", self.task)
 
             if mapped == DownloadStatus.COMPLETED and not self._completed_emitted:
+                self._handle.pause()
+                self.task.speed_bps = 0
                 self._completed_emitted = True
                 self.task.completed_at = time.time()
                 self.events.emit("status", self.task)

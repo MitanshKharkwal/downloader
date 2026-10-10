@@ -103,7 +103,7 @@ extension TaskStatusX on TaskStatus {
       case TaskStatus.canceled:
         return AppColors.textSecondary;
       case TaskStatus.connecting:
-        return AppColors.accent;
+        return const Color(0xFF38BDF8);
     }
   }
 
@@ -172,6 +172,9 @@ class DownloadTask {
     return DownloadTask(
       id: json['id'] ?? '',
       title:
+          ((json['name'] as String?)?.isNotEmpty == true
+              ? json['name'] as String
+              : null) ??
           _extractFilename(json['file_path']) ??
           json['source'] ??
           'Unknown Source',

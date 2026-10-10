@@ -63,6 +63,7 @@ class DownloadTask:
     description: str = ""
     category: str = ""
     filename_is_explicit: bool = False
+    owns_dest_dir: bool = False
 
     error_message: str = ""
     headers: dict[str, str] = field(default_factory=dict)

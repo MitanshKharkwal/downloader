@@ -4,8 +4,7 @@ libtorrent>=2.0
 pyperclip
 win11toast; sys_platform == 'win32'
 
-# Windows desktop app
-# (Now uses C# WinUI 3 frontend, no Python GUI libraries needed)
+# Desktop frontend is Flutter; Python runs the download daemon.
 
 # Note: libtorrent ships prebuilt wheels for common platforms/Python
 # versions. If pip tries to build from source, install the
@@ -15,3 +14,6 @@ win11toast; sys_platform == 'win32'
 pytest==8.1.1
 # Video downloading
 yt-dlp>=2023.12.30
+
+# Optional Windows metered-network detection
+winrt-Windows.Networking.Connectivity; sys_platform == 'win32'

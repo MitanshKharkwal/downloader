@@ -32,6 +32,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
   Future<void> _loadSettings() async {
     try {
       final config = await _ipcClient.getConfig();
+      if (!mounted) return;
       setState(() {
         _downloadDir = config['download_dir'] ?? '';
         _maxConcurrent = (config['max_concurrent_downloads'] ?? 3).toDouble();
@@ -77,13 +78,17 @@ class _SettingsDialogState extends State<SettingsDialog> {
         Navigator.pop(context);
       }
     } catch (e) {
-      debugPrint("Failed to save settings: $e");
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text("Could not save settings: $e")));
+      }
     }
   }
 
   Future<void> _pickDirectory() async {
     final String? directoryPath = await getDirectoryPath();
-    if (directoryPath != null) {
+    if (mounted && directoryPath != null) {
       setState(() {
         _downloadDir = directoryPath;
       });
@@ -92,7 +97,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
 
   Future<void> _pickCategoryDirectory(String category) async {
     final String? directoryPath = await getDirectoryPath();
-    if (directoryPath != null) {
+    if (mounted && directoryPath != null) {
       setState(() {
         _categoryDirs[category] = directoryPath;
       });
@@ -242,7 +247,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
                   Slider(
                     value: _maxConcurrent,
                     min: 1,
-                    max: 10,
+                    max: _maxConcurrent > 10 ? _maxConcurrent : 10,
                     divisions: 9,
                     onChanged: (val) {
                       setState(() {
@@ -260,7 +265,9 @@ class _SettingsDialogState extends State<SettingsDialog> {
                   Slider(
                     value: _maxBandwidth,
                     min: 0,
-                    max: 10000, // up to 10MB/s for slider
+                    max: _maxBandwidth > 10000
+                        ? _maxBandwidth
+                        : 10000, // up to 10MB/s for slider
                     divisions: 100,
                     onChanged: (val) {
                       setState(() {

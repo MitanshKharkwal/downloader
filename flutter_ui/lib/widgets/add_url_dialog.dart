@@ -4,7 +4,9 @@ import '../theme/app_theme.dart';
 class AddUrlDialog extends StatefulWidget {
   final Future<void> Function(String) onAdd;
 
-  const AddUrlDialog({super.key, required this.onAdd});
+  final Future<void> Function(String, String)? onAddVideo;
+
+  const AddUrlDialog({super.key, required this.onAdd, this.onAddVideo});
 
   @override
   State<AddUrlDialog> createState() => _AddUrlDialogState();
@@ -14,6 +16,8 @@ class _AddUrlDialogState extends State<AddUrlDialog> {
   final _controller = TextEditingController();
   bool _isButtonEnabled = false;
   bool _isLoading = false;
+  bool _videoMode = false;
+  String _format = 'best';
   String? _errorMessage;
 
   static bool _isValidInput(String text) {
@@ -21,7 +25,8 @@ class _AddUrlDialogState extends State<AddUrlDialog> {
     if (trimmed.isEmpty) return false;
     if (trimmed.startsWith('magnet:?')) return true;
     if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
-      return true;
+      final uri = Uri.tryParse(trimmed);
+      return uri != null && uri.host.isNotEmpty;
     }
     return false;
   }
@@ -42,7 +47,11 @@ class _AddUrlDialogState extends State<AddUrlDialog> {
     });
 
     try {
-      await widget.onAdd(url);
+      if (_videoMode && widget.onAddVideo != null) {
+        await widget.onAddVideo!(url, _format);
+      } else {
+        await widget.onAdd(url);
+      }
       if (mounted) Navigator.pop(context);
     } catch (e) {
       if (mounted) {
@@ -121,6 +130,34 @@ class _AddUrlDialogState extends State<AddUrlDialog> {
               },
               onSubmitted: (_) => _isButtonEnabled ? _submit() : null,
             ),
+            if (widget.onAddVideo != null) ...[
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Download from a video page'),
+                value: _videoMode,
+                onChanged: _isLoading
+                    ? null
+                    : (value) => setState(() => _videoMode = value),
+              ),
+              if (_videoMode)
+                DropdownButton<String>(
+                  isExpanded: true,
+                  value: _format,
+                  items: const [
+                    DropdownMenuItem(
+                      value: 'best',
+                      child: Text('Best available video'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'worst',
+                      child: Text('Smallest video'),
+                    ),
+                  ],
+                  onChanged: _isLoading
+                      ? null
+                      : (value) => setState(() => _format = value!),
+                ),
+            ],
             // Inline error row — dialog stays open on failure, user keeps their typed URL
             AnimatedSize(
               duration: const Duration(milliseconds: 180),

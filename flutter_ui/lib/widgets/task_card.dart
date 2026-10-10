@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:phosphor_icons/phosphor_icons.dart';
@@ -21,12 +22,12 @@ class TaskCard extends StatefulWidget {
   });
 
   final DownloadTask task;
-  final VoidCallback onPause;
-  final VoidCallback onResume;
-  final VoidCallback onRetry;
-  final VoidCallback onCancel;
-  final VoidCallback onRemove;
-  final ValueChanged<int> onPriority;
+  final FutureOr<void> Function() onPause;
+  final FutureOr<void> Function() onResume;
+  final FutureOr<void> Function() onRetry;
+  final FutureOr<void> Function() onCancel;
+  final FutureOr<void> Function() onRemove;
+  final FutureOr<void> Function(int) onPriority;
 
   /// Hides speed/ETA columns on narrow widths.
   final bool compact;
@@ -43,8 +44,10 @@ class _TaskCardState extends State<TaskCard> {
 
   /// Debounce: timestamp of last action to prevent rapid duplicate RPCs.
   int _lastActionMs = 0;
+  bool _actionPending = false;
 
   bool get _isDebouncing =>
+      _actionPending ||
       DateTime.now().millisecondsSinceEpoch - _lastActionMs < 300;
 
   TaskStatus get _displayStatus => _optimisticStatus ?? widget.task.status;
@@ -61,22 +64,52 @@ class _TaskCardState extends State<TaskCard> {
   Future<void> _handlePause() async {
     if (_isDebouncing) return;
     _lastActionMs = DateTime.now().millisecondsSinceEpoch;
+    _actionPending = true;
     setState(() => _optimisticStatus = TaskStatus.paused);
     try {
-      widget.onPause();
-    } catch (_) {
+      await widget.onPause();
       if (mounted) setState(() => _optimisticStatus = null);
+    } catch (error) {
+      _showError(error);
+      if (mounted) setState(() => _optimisticStatus = null);
+    } finally {
+      _actionPending = false;
     }
   }
 
   Future<void> _handleResume() async {
     if (_isDebouncing) return;
     _lastActionMs = DateTime.now().millisecondsSinceEpoch;
+    _actionPending = true;
     setState(() => _optimisticStatus = TaskStatus.downloading);
     try {
-      widget.onResume();
-    } catch (_) {
+      await widget.onResume();
       if (mounted) setState(() => _optimisticStatus = null);
+    } catch (error) {
+      _showError(error);
+      if (mounted) setState(() => _optimisticStatus = null);
+    } finally {
+      _actionPending = false;
+    }
+  }
+
+  void _showError(Object error) {
+    if (mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.toString())));
+    }
+  }
+
+  Future<void> _runAction(FutureOr<void> Function() action) async {
+    if (_actionPending) return;
+    _actionPending = true;
+    try {
+      await action();
+    } catch (error) {
+      _showError(error);
+    } finally {
+      _actionPending = false;
     }
   }
 
@@ -223,10 +256,10 @@ class _TaskCardState extends State<TaskCard> {
                 visible: _hovered,
                 onPause: _handlePause,
                 onResume: _handleResume,
-                onRetry: widget.onRetry,
-                onCancel: widget.onCancel,
-                onRemove: widget.onRemove,
-                onPriority: widget.onPriority,
+                onRetry: () => _runAction(widget.onRetry),
+                onCancel: () => _runAction(widget.onCancel),
+                onRemove: () => _runAction(widget.onRemove),
+                onPriority: (p) => _runAction(() => widget.onPriority(p)),
               ),
             ],
           ),

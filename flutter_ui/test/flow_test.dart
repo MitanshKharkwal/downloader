@@ -34,6 +34,67 @@ DownloadTask _task({
 }
 
 void main() {
+  testWidgets('Failed async pause restores server status and shows error', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _wrap(
+        TaskCard(
+          task: _task(),
+          onPause: () async {
+            await Future<void>.delayed(const Duration(milliseconds: 10));
+            throw Exception('Daemon unavailable');
+          },
+          onResume: () {},
+          onRetry: () {},
+          onCancel: () {},
+          onRemove: () {},
+          onPriority: (_) {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final actions = tester.widget<ActionsWidget>(find.byType(ActionsWidget));
+    actions.onPause();
+    await tester.pump(const Duration(milliseconds: 30));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Daemon unavailable'), findsOneWidget);
+    expect(
+      tester.widget<ActionsWidget>(find.byType(ActionsWidget)).displayStatus,
+      TaskStatus.downloading,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Video mode calls video action rather than ordinary add', (
+    tester,
+  ) async {
+    String? videoUrl;
+    bool ordinary = false;
+    await tester.pumpWidget(
+      _wrap(
+        AddUrlDialog(
+          onAdd: (_) async {
+            ordinary = true;
+          },
+          onAddVideo: (url, format) async {
+            videoUrl = url;
+            expect(format, 'best');
+            throw Exception('Keep dialog open for verification');
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'https://example.com/watch');
+    await tester.tap(find.byType(Switch));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(ElevatedButton, 'Add Task'));
+    await tester.pumpAndSettle();
+    expect(videoUrl, 'https://example.com/watch');
+    expect(ordinary, isFalse);
+  });
+
   // ──────────────────────────────────────────────────────────────────
   // Flow 1: Add a Download
   // ──────────────────────────────────────────────────────────────────

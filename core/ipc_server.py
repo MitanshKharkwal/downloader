@@ -76,10 +76,18 @@ def _make_handler(manager: DownloadManager, token: str):
                 self._send_json(401, {"ok": False, "error": "unauthorized"})
                 return
 
-            length = int(self.headers.get("Content-Length", 0))
             try:
+                length = int(self.headers.get("Content-Length", 0))
+                if length < 0 or length > 1024 * 1024:
+                    self._send_json(413, {"ok": False, "error": "Request too large"})
+                    return
+                self.connection.settimeout(10)
                 body = json.loads(self.rfile.read(length) or b"{}")
-            except (json.JSONDecodeError, ValueError):
+                if not isinstance(body, dict) or not isinstance(
+                    body.get("args", {}), dict
+                ):
+                    raise ValueError("Expected an object")
+            except (json.JSONDecodeError, ValueError, TimeoutError):
                 self._send_json(400, {"ok": False, "error": "invalid JSON"})
                 return
 
@@ -100,7 +108,12 @@ def _make_handler(manager: DownloadManager, token: str):
                     result = manager.add(
                         body["source"], filename=filename, headers=headers
                     )
-                    self._send_json(200, {"ok": True, **result.to_dict()})
+                    public = {
+                        k: v for k, v in result.to_dict().items() if k != "headers"
+                    }
+                    self._send_json(200, {"ok": True, **public})
+                except (ValueError, TypeError, KeyError) as exc:
+                    self._send_json(400, {"ok": False, "error": str(exc)})
                 except Exception as exc:
                     self._send_json(500, {"ok": False, "error": str(exc)})
                 return
@@ -117,6 +130,7 @@ def _make_handler(manager: DownloadManager, token: str):
                             tasks.append(
                                 {
                                     "id": task.id,
+                                    "name": task.name or "",
                                     "source": task.source,
                                     "status": task.status.value.upper(),
                                     "priority": task.priority.value,
@@ -132,41 +146,11 @@ def _make_handler(manager: DownloadManager, token: str):
                             )
                         self._send_json(200, {"ok": True, "tasks": tasks})
                     elif method == "add_video_task":
-                        # source format: ytdlp||format_id||url
-                        url = args["url"]
-                        format_id = args.get("format_id", "best")
-                        source = f"ytdlp||{format_id}||{url}"
-                        # Need to bypass manager.add since it assumes HTTP or Torrent based on regex/extension
-                        # Let's just create a DownloadTask and insert it directly
-                        from core.models import DownloadTask, DownloadType
-
-                        name = args.get("filename", "video.mp4")
-                        category_dirs = manager.get_config().get("category_dirs", {})
-                        final_dest_dir = category_dirs.get("Video") or os.path.join(
-                            manager.download_dir, "Video"
+                        task = manager.add_video(
+                            args.get("url"),
+                            args.get("format_id", "best"),
+                            args.get("filename", "video.mp4"),
                         )
-                        os.makedirs(final_dest_dir, exist_ok=True)
-                        base, ext = os.path.splitext(name)
-                        target_path = os.path.join(final_dest_dir, name)
-                        counter = 1
-                        while os.path.exists(target_path) or os.path.exists(
-                            target_path + ".dmpart"
-                        ):
-                            target_path = os.path.join(
-                                final_dest_dir, f"{base} ({counter}){ext}"
-                            )
-                            counter += 1
-
-                        task = DownloadTask(
-                            source=source,
-                            dest_path=target_path,
-                            type=DownloadType.VIDEO,
-                        )
-                        with manager._lock:
-                            manager._tasks[task.id] = task
-                        manager._save_state()
-                        manager.events.emit("added", task)
-                        manager._maybe_start_next()
                         self._send_json(200, {"ok": True, "id": task.id})
 
                     elif method == "fetch_video_info":
@@ -268,9 +252,30 @@ def _make_handler(manager: DownloadManager, token: str):
                     elif method == "update_settings":
                         if hasattr(manager, "app_config"):
                             settings = args.get("settings", {})
+                            if not isinstance(settings, dict):
+                                raise ValueError("Settings must be an object")
+                            translated = {
+                                k: v
+                                for k, v in settings.items()
+                                if k in manager.get_config() or k == "category_dirs"
+                            }
+                            if "max_concurrent" in settings:
+                                translated["max_concurrent_downloads"] = settings[
+                                    "max_concurrent"
+                                ]
+                            if "max_bandwidth_kbps" in settings:
+                                value = settings["max_bandwidth_kbps"]
+                                if type(value) is not int or value < 0:
+                                    raise ValueError("Invalid bandwidth")
+                                translated["global_bandwidth_limit"] = value * 1024
+                            if (
+                                "run_on_startup" in settings
+                                and type(settings["run_on_startup"]) is not bool
+                            ):
+                                raise ValueError("Invalid startup setting")
+                            manager.set_config(translated)
                             manager.app_config.update(settings)
                             manager.app_config.apply_run_on_startup()
-                            manager.apply_config()
                             self._send_json(200, {"ok": True})
                         else:
                             self._send_json(
@@ -281,6 +286,8 @@ def _make_handler(manager: DownloadManager, token: str):
                         self._send_json(
                             400, {"ok": False, "error": "Unknown RPC method"}
                         )
+                except (ValueError, TypeError, KeyError) as exc:
+                    self._send_json(400, {"ok": False, "error": str(exc)})
                 except Exception as exc:
                     self._send_json(500, {"ok": False, "error": str(exc)})
                 return

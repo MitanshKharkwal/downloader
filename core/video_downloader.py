@@ -11,7 +11,10 @@ from core.models import DownloadStatus, DownloadTask
 class VideoDownload:
     """An engine that uses yt-dlp to download video/audio streams."""
 
-    def __init__(self, task: DownloadTask, events: EventEmitter):
+    def __init__(self, task: DownloadTask, events: EventEmitter, rate_limiter=None):
+        self.rate_limiter = rate_limiter
+        self._last_bytes = 0
+        self._last_filename = None
         self.task = task
         self.events = events
         self._thread: threading.Thread | None = None
@@ -46,52 +49,64 @@ class VideoDownload:
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._thread.start()
 
-    # Note: yt-dlp runs synchronously and has no external interrupt mechanism.
-    # We set a flag and wait briefly, but if it doesn't stop, we leave the status
-    # as DOWNLOADING until it actually finishes.
+    def _join(self):
+        if self._thread and self._thread is not threading.current_thread():
+            self._thread.join()
+
     def pause(self) -> None:
-        if self.task.status != DownloadStatus.DOWNLOADING:
+        if self.task.status not in (
+            DownloadStatus.CONNECTING,
+            DownloadStatus.DOWNLOADING,
+        ):
             return
         self._pause_requested = True
-        self._pause_event.set()
         self._cancel_event.set()
-
-        if self._thread and self._thread.is_alive():
-            self._thread.join(timeout=2.0)
-
-        if self._thread and self._thread.is_alive():
-            pass
-        else:
-            self.task.status = DownloadStatus.PAUSED
-            self.events.emit("status", self.task)
+        self._join()
+        self.task.status = DownloadStatus.PAUSED
+        self.task.speed_bps = 0
+        self.events.emit("status", self.task)
 
     def resume(self) -> None:
         if self.task.status != DownloadStatus.PAUSED:
             return
-        self.task.status = DownloadStatus.DOWNLOADING
-        self._pause_requested = False
-        self._pause_event.clear()
-        self._cancel_event.clear()
-        self.events.emit("status", self.task)
-
-        self._thread = threading.Thread(target=self._run, daemon=True)
-        self._thread.start()
+        self._join()
+        self.task.status = DownloadStatus.QUEUED
+        self.start()
 
     def cancel(self, delete_files: bool = False) -> None:
         self._delete_on_cancel = delete_files
         self._pause_requested = False
         self._cancel_event.set()
+        self._join()
+        if delete_files:
+            from .paths import cleanup_task_files
+
+            cleanup_task_files(self.task)
         self.task.status = DownloadStatus.CANCELED
+        self.task.speed_bps = 0
         self.events.emit("status", self.task)
 
     def stop_threads(self) -> None:
         self._cancel_event.set()
+        self._join()
 
     def _progress_hook(self, d):
         if self._cancel_event.is_set():
             raise Exception("Cancelled")
 
         if d["status"] == "downloading":
+            current = d.get("downloaded_bytes", 0)
+            filename = d.get("filename")
+            if filename != self._last_filename:
+                self._last_bytes = 0
+                self._last_filename = filename
+            if self.rate_limiter:
+                self.rate_limiter.consume(
+                    max(0, current - self._last_bytes), self._cancel_event
+                )
+            self._last_bytes = current
+            if self._cancel_event.is_set():
+                raise RuntimeError("Cancelled")
             self.task.status = DownloadStatus.DOWNLOADING
             self.task.downloaded_bytes = d.get(
                 "downloaded_bytes", self.task.downloaded_bytes
@@ -118,7 +133,10 @@ class VideoDownload:
 
             ydl_opts = {
                 "format": self._format_id,
-                "outtmpl": self.task.dest_path,
+                "outtmpl": self.task.dest_path.replace("%", "%%"),
+                "noplaylist": True,
+                "socket_timeout": 10,
+                "retries": 2,
                 "progress_hooks": [self._progress_hook],
                 "quiet": True,
                 "no_warnings": True,
@@ -137,7 +155,7 @@ class VideoDownload:
                         try:
                             if os.path.exists(self.task.dest_path):
                                 os.remove(self.task.dest_path)
-                        except:
+                        except OSError:
                             pass
                 return
 

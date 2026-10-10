@@ -1,1 +1,1 @@
-c:\Users\mitan\Downloads\download_manager_1\download_manager\start_daemon.bat
+# Legacy file: startup is resolved from the installed executable or source directory.
