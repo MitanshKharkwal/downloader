@@ -29,7 +29,11 @@ class VideoDownload:
                 self._url = parts[2]
 
     def start(self) -> None:
-        if self.task.status not in (DownloadStatus.QUEUED, DownloadStatus.ERROR):
+        if self.task.status not in (
+            DownloadStatus.QUEUED,
+            DownloadStatus.ERROR,
+            DownloadStatus.CONNECTING,
+        ):
             return
 
         self.task.status = DownloadStatus.CONNECTING
@@ -42,14 +46,24 @@ class VideoDownload:
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._thread.start()
 
+    # Note: yt-dlp runs synchronously and has no external interrupt mechanism.
+    # We set a flag and wait briefly, but if it doesn't stop, we leave the status
+    # as DOWNLOADING until it actually finishes.
     def pause(self) -> None:
         if self.task.status != DownloadStatus.DOWNLOADING:
             return
-        self.task.status = DownloadStatus.PAUSED
         self._pause_requested = True
         self._pause_event.set()
         self._cancel_event.set()
-        self.events.emit("status", self.task)
+
+        if self._thread and self._thread.is_alive():
+            self._thread.join(timeout=2.0)
+
+        if self._thread and self._thread.is_alive():
+            pass
+        else:
+            self.task.status = DownloadStatus.PAUSED
+            self.events.emit("status", self.task)
 
     def resume(self) -> None:
         if self.task.status != DownloadStatus.PAUSED:
@@ -88,10 +102,20 @@ class VideoDownload:
                 or self.task.total_bytes
             )
             self.task.speed_bps = d.get("speed", 0) or 0
-            self.events.emit("status", self.task)
+            self.events.emit("progress", self.task)
 
     def _run(self):
         try:
+            if (
+                os.path.exists(self.task.dest_path)
+                and os.path.getsize(self.task.dest_path) > 0
+            ):
+                self.task.status = DownloadStatus.COMPLETED
+                self.task.completed_at = time.time()
+                self.task.speed_bps = 0
+                self.events.emit("status", self.task)
+                return
+
             ydl_opts = {
                 "format": self._format_id,
                 "outtmpl": self.task.dest_path,
@@ -105,7 +129,10 @@ class VideoDownload:
                 ydl.download([self._url])
 
             if self._cancel_event.is_set():
-                if not getattr(self, "_pause_requested", False):
+                if getattr(self, "_pause_requested", False):
+                    self.task.status = DownloadStatus.PAUSED
+                    self.events.emit("status", self.task)
+                else:
                     if self._delete_on_cancel:
                         try:
                             if os.path.exists(self.task.dest_path):

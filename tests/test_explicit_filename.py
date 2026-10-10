@@ -57,6 +57,7 @@ def test_explicit_filename():
 
     try:
         import shutil
+
         shutil.rmtree("test_explicit_dir", ignore_errors=True)
         dm = DownloadManager("test_explicit_dir")
 

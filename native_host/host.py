@@ -102,6 +102,12 @@ def post_to_app(
             )
             with urllib.request.urlopen(req, timeout=2) as resp:
                 return json.loads(resp.read())
+        except urllib.error.HTTPError as e:
+            try:
+                body = e.read().decode("utf-8")
+                return json.loads(body)
+            except Exception:
+                return {"ok": False, "error": f"HTTP {e.code}: {e.reason}"}
         except (urllib.error.URLError, ConnectionRefusedError, TimeoutError):
             return None
 

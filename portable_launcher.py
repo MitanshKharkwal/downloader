@@ -1,11 +1,12 @@
 import os
-import sys
 import subprocess
+import sys
 import threading
 import time
 
+
 def resource_path(relative_path):
-    """ Get absolute path to resource, works for dev and for PyInstaller """
+    """Get absolute path to resource, works for dev and for PyInstaller"""
     try:
         # PyInstaller creates a temp folder and stores path in _MEIPASS
         base_path = sys._MEIPASS
@@ -13,10 +14,11 @@ def resource_path(relative_path):
         base_path = os.path.abspath(".")
     return os.path.join(base_path, relative_path)
 
+
 def start_daemon():
     # Import daemon to run it
     import daemon
-    
+
     # We want daemon to just run in this background thread.
     # daemon.main() has an infinite loop at the end, so it will block here.
     try:
@@ -24,11 +26,12 @@ def start_daemon():
     except Exception as e:
         print(f"Daemon exception: {e}")
 
+
 def main():
     # Start the daemon in a background thread
     daemon_thread = threading.Thread(target=start_daemon, daemon=True)
     daemon_thread.start()
-    
+
     # Give the daemon a moment to initialize the IPC server
     time.sleep(1)
 
@@ -41,6 +44,7 @@ def main():
         print(f"Error: Could not find UI executable at {ui_exe}")
         # Keep running so user can see the error, or at least sleep
         time.sleep(5)
+
 
 if __name__ == "__main__":
     main()

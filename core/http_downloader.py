@@ -170,12 +170,19 @@ class HttpDownload:
             for t in self._threads:
                 t.start()
 
+            last_save = time.time()
             while any(t.is_alive() for t in self._threads):
                 if self._cancel_event.is_set():
                     for t in self._threads:
                         t.join(timeout=2.0)
                     break
                 self._tune_segments()
+
+                now = time.time()
+                if now - last_save > 5.0:
+                    self._save_state()
+                    last_save = now
+
                 # Use wait instead of sleep to allow faster exit on cancel
                 self._cancel_event.wait(1.0)
 
@@ -403,7 +410,8 @@ class HttpDownload:
         try:
             if self.task.total_bytes <= 0:
                 if not os.path.exists(self._part_path):
-                    open(self._part_path, "wb").close()
+                    with open(self._part_path, "wb"):
+                        pass
             elif (
                 not os.path.exists(self._part_path)
                 or os.path.getsize(self._part_path) != self.task.total_bytes
@@ -452,6 +460,8 @@ class HttpDownload:
 
                             n = len(chunk)
                             remaining = (seg.end - seg.start + 1) - seg.downloaded
+                            if remaining <= 0:
+                                break
                             if remaining > 0 and n > remaining:
                                 chunk = chunk[:remaining]
                                 n = remaining
@@ -487,8 +497,9 @@ class HttpDownload:
                                 self.task.total_bytes = self.task.downloaded_bytes
                             else:
                                 consecutive_failures += 1
-                                if consecutive_failures >= MAX_CONSECUTIVE_SEGMENT_FAILURES * len(
-                                    sources
+                                if (
+                                    consecutive_failures
+                                    >= MAX_CONSECUTIVE_SEGMENT_FAILURES * len(sources)
                                 ):
                                     self.task.error_message = f"gave up after {consecutive_failures} failed attempts: stream truncated"
                                     self._cancel_event.set()
@@ -496,8 +507,12 @@ class HttpDownload:
                                     self.task.status = DownloadStatus.ERROR
                                     self.events.emit("status", self.task)
                                     return
-                                self.task.error_message = "segment truncated, retrying..."
-                                current_source_idx = (current_source_idx + 1) % len(sources)
+                                self.task.error_message = (
+                                    "segment truncated, retrying..."
+                                )
+                                current_source_idx = (current_source_idx + 1) % len(
+                                    sources
+                                )
                                 time.sleep(1.5)
                                 continue
                 except requests.RequestException as exc:
@@ -612,8 +627,13 @@ class HttpDownload:
                 for s in self._segments
             ],
         }
-        with open(self._state_path, "w") as f:
+        tmp_file = self._state_path + ".tmp"
+        with open(tmp_file, "w") as f:
             json.dump(state, f)
+        try:
+            os.replace(tmp_file, self._state_path)
+        except OSError:
+            pass
 
     def _cleanup_state_file(self) -> None:
         if os.path.exists(self._state_path):

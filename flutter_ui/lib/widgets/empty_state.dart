@@ -46,13 +46,19 @@ class EmptyState extends StatelessWidget {
             Text(
               title,
               textAlign: TextAlign.center,
-              style: text.titleMedium?.copyWith(fontSize: 15, color: AppColors.textPrimary),
+              style: text.titleMedium?.copyWith(
+                fontSize: 15,
+                color: AppColors.textPrimary,
+              ),
             ),
             const SizedBox(height: 6),
             Text(
               subtitle,
               textAlign: TextAlign.center,
-              style: text.bodySmall?.copyWith(color: AppColors.textMuted, height: 1.5),
+              style: text.bodySmall?.copyWith(
+                color: AppColors.textMuted,
+                height: 1.5,
+              ),
             ),
             if (onAction != null && actionLabel != null) ...<Widget>[
               const SizedBox(height: 16),
@@ -108,4 +114,3 @@ class _TextActionState extends State<_TextAction> {
     );
   }
 }
-

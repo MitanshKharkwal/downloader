@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
@@ -12,7 +11,8 @@ class IpcClient {
   Future<void> _loadToken() async {
     if (_token != null) return;
 
-    final homeDir = Platform.environment['USERPROFILE'] ?? Platform.environment['HOME'];
+    final homeDir =
+        Platform.environment['USERPROFILE'] ?? Platform.environment['HOME'];
     if (homeDir == null) return;
 
     final tokenFile = File('$homeDir/.download_manager/ipc_token.txt');
@@ -21,7 +21,10 @@ class IpcClient {
     }
   }
 
-  Future<dynamic> _callMethod(String method, [Map<String, dynamic>? args]) async {
+  Future<dynamic> _callMethod(
+    String method, [
+    Map<String, dynamic>? args,
+  ]) async {
     await _loadToken();
     if (_token == null) throw Exception("IPC Token not found");
 
@@ -44,14 +47,9 @@ class IpcClient {
   }
 
   Future<List<DownloadTask>> listTasks() async {
-    try {
-      final response = await _callMethod('list_tasks');
-      final tasksData = response['tasks'] as List;
-      return tasksData.map((t) => DownloadTask.fromJson(t)).toList();
-    } catch (e) {
-      debugPrint("Error listing tasks: $e");
-      return [];
-    }
+    final response = await _callMethod('list_tasks');
+    final tasksData = response['tasks'] as List;
+    return tasksData.map((t) => DownloadTask.fromJson(t)).toList();
   }
 
   Future<void> addUrl(String url) async {
@@ -96,5 +94,39 @@ class IpcClient {
 
   Future<void> setPriority(String id, int priority) async {
     await _callMethod('set_priority', {'task_id': id, 'priority': priority});
+  }
+
+  Future<void> pauseAll() async {
+    await _callMethod('pause_all');
+  }
+
+  Future<void> resumeAll() async {
+    await _callMethod('resume_all');
+  }
+
+  Future<void> clearFinished() async {
+    await _callMethod('clear_finished');
+  }
+
+  Future<Map<String, dynamic>> getConfig() async {
+    final response = await _callMethod('get_config');
+    return response['config'] as Map<String, dynamic>;
+  }
+
+  Future<void> setConfig(Map<String, dynamic> config) async {
+    await _callMethod('set_config', {'config': config});
+  }
+
+  Future<void> addVideoTask(String url, String formatId) async {
+    await _callMethod('add_video_task', {'url': url, 'format_id': formatId});
+  }
+
+  Future<Map<String, dynamic>> getSettings() async {
+    final response = await _callMethod('get_settings');
+    return response['settings'] as Map<String, dynamic>;
+  }
+
+  Future<void> updateSettings(Map<String, dynamic> settings) async {
+    await _callMethod('update_settings', {'settings': settings});
   }
 }

@@ -64,7 +64,10 @@ class _AddUrlDialogState extends State<AddUrlDialog> {
         borderRadius: AppRadius.lg,
         side: const BorderSide(color: AppColors.border),
       ),
-      title: const Text('Add New Download', style: TextStyle(color: AppColors.textPrimary)),
+      title: const Text(
+        'Add New Download',
+        style: TextStyle(color: AppColors.textPrimary),
+      ),
       content: SizedBox(
         width: 440,
         child: Column(
@@ -77,26 +80,32 @@ class _AddUrlDialogState extends State<AddUrlDialog> {
               enabled: !_isLoading,
               style: text.bodyMedium?.copyWith(color: AppColors.textPrimary),
               decoration: InputDecoration(
-                hintText: 'Paste URL or magnet linkâ€¦',
+                hintText: 'Paste URL or magnet link\u2026',
                 hintStyle: const TextStyle(color: AppColors.textMuted),
                 filled: true,
                 fillColor: AppColors.background,
                 border: OutlineInputBorder(
                   borderRadius: AppRadius.md,
                   borderSide: BorderSide(
-                    color: _errorMessage != null ? AppColors.danger : AppColors.border,
+                    color: _errorMessage != null
+                        ? AppColors.danger
+                        : AppColors.border,
                   ),
                 ),
                 enabledBorder: OutlineInputBorder(
                   borderRadius: AppRadius.md,
                   borderSide: BorderSide(
-                    color: _errorMessage != null ? AppColors.danger : AppColors.border,
+                    color: _errorMessage != null
+                        ? AppColors.danger
+                        : AppColors.border,
                   ),
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: AppRadius.md,
                   borderSide: BorderSide(
-                    color: _errorMessage != null ? AppColors.danger : AppColors.accent,
+                    color: _errorMessage != null
+                        ? AppColors.danger
+                        : AppColors.accent,
                     width: 1.5,
                   ),
                 ),
@@ -112,7 +121,7 @@ class _AddUrlDialogState extends State<AddUrlDialog> {
               },
               onSubmitted: (_) => _isButtonEnabled ? _submit() : null,
             ),
-            // Inline error row â€” dialog stays open on failure, user keeps their typed URL
+            // Inline error row — dialog stays open on failure, user keeps their typed URL
             AnimatedSize(
               duration: const Duration(milliseconds: 180),
               curve: Curves.easeOut,
@@ -120,16 +129,25 @@ class _AddUrlDialogState extends State<AddUrlDialog> {
                   ? Padding(
                       padding: const EdgeInsets.only(top: 10),
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 8,
+                        ),
                         decoration: BoxDecoration(
                           color: AppColors.dangerSoft,
                           borderRadius: AppRadius.sm,
-                          border: Border.all(color: AppColors.danger.withValues(alpha: 0.3)),
+                          border: Border.all(
+                            color: AppColors.danger.withValues(alpha: 0.3),
+                          ),
                         ),
                         child: Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Icon(Icons.error_outline, size: 14, color: AppColors.danger),
+                            const Icon(
+                              Icons.error_outline,
+                              size: 14,
+                              color: AppColors.danger,
+                            ),
                             const SizedBox(width: 6),
                             Expanded(
                               child: Text(
@@ -155,7 +173,9 @@ class _AddUrlDialogState extends State<AddUrlDialog> {
           onPressed: _isLoading ? null : () => Navigator.pop(context),
           child: Text(
             'Cancel',
-            style: TextStyle(color: _isLoading ? AppColors.textMuted : AppColors.textSecondary),
+            style: TextStyle(
+              color: _isLoading ? AppColors.textMuted : AppColors.textSecondary,
+            ),
           ),
         ),
         AnimatedSwitcher(
@@ -196,7 +216,9 @@ class _AddUrlDialogState extends State<AddUrlDialog> {
                     child: Text(
                       'Add Task',
                       style: TextStyle(
-                        color: _isButtonEnabled ? AppColors.textPrimary : AppColors.textMuted,
+                        color: _isButtonEnabled
+                            ? AppColors.textPrimary
+                            : AppColors.textMuted,
                         fontWeight: FontWeight.w600,
                         fontSize: 13,
                       ),

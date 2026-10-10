@@ -3,7 +3,16 @@ import 'package:phosphor_icons/phosphor_icons.dart';
 
 import '../theme/app_theme.dart';
 
-enum TaskCategory { video, music, programs, documents, compressed, photos, other }
+enum TaskCategory {
+  video,
+  music,
+  programs,
+  documents,
+  compressed,
+  photos,
+  torrents,
+  other,
+}
 
 extension TaskCategoryX on TaskCategory {
   String get label {
@@ -20,6 +29,8 @@ extension TaskCategoryX on TaskCategory {
         return 'Compressed';
       case TaskCategory.photos:
         return 'Photos';
+      case TaskCategory.torrents:
+        return 'Torrents';
       case TaskCategory.other:
         return 'Other';
     }
@@ -39,13 +50,23 @@ extension TaskCategoryX on TaskCategory {
         return PhosphorIcons.archive(PhosphorIconsStyle.light);
       case TaskCategory.photos:
         return PhosphorIcons.image(PhosphorIconsStyle.light);
+      case TaskCategory.torrents:
+        return PhosphorIcons.magnet(PhosphorIconsStyle.light);
       case TaskCategory.other:
         return PhosphorIcons.file(PhosphorIconsStyle.light);
     }
   }
 }
 
-enum TaskStatus { downloading, paused, completed, error, queued, canceled }
+enum TaskStatus {
+  downloading,
+  paused,
+  completed,
+  error,
+  queued,
+  canceled,
+  connecting,
+}
 
 extension TaskStatusX on TaskStatus {
   String get label {
@@ -62,6 +83,8 @@ extension TaskStatusX on TaskStatus {
         return 'Queued';
       case TaskStatus.canceled:
         return 'Canceled';
+      case TaskStatus.connecting:
+        return 'Connecting';
     }
   }
 
@@ -79,6 +102,8 @@ extension TaskStatusX on TaskStatus {
         return AppColors.warning;
       case TaskStatus.canceled:
         return AppColors.textSecondary;
+      case TaskStatus.connecting:
+        return AppColors.accent;
     }
   }
 
@@ -97,6 +122,7 @@ class DownloadTask {
     required this.status,
     this.errorMessage,
     this.priority,
+    this.filePath,
   });
 
   factory DownloadTask.fromJson(Map<String, dynamic> json) {
@@ -114,6 +140,8 @@ class DownloadTask {
       category = TaskCategory.photos;
     } else if (catStr.contains('document') || catStr.contains('pdf')) {
       category = TaskCategory.documents;
+    } else if (catStr.contains('torrent')) {
+      category = TaskCategory.torrents;
     }
 
     TaskStatus status = TaskStatus.queued;
@@ -128,6 +156,8 @@ class DownloadTask {
       status = TaskStatus.error;
     } else if (statStr == 'CANCELED') {
       status = TaskStatus.canceled;
+    } else if (statStr == 'CONNECTING') {
+      status = TaskStatus.connecting;
     }
 
     final totalBytes = json['total_bytes'] ?? 0;
@@ -141,7 +171,10 @@ class DownloadTask {
 
     return DownloadTask(
       id: json['id'] ?? '',
-      title: _extractFilename(json['file_path']) ?? json['source'] ?? 'Unknown Source',
+      title:
+          _extractFilename(json['file_path']) ??
+          json['source'] ??
+          'Unknown Source',
       category: category,
       sizeBytes: totalBytes,
       progress: progress,
@@ -149,6 +182,7 @@ class DownloadTask {
       status: status,
       errorMessage: json['error_message'] ?? json['error'],
       priority: json['priority'],
+      filePath: json['file_path'],
     );
   }
 
@@ -162,6 +196,7 @@ class DownloadTask {
   final String id;
   final String title;
   final TaskCategory category;
+  final String? filePath;
   final int sizeBytes;
 
   /// 0.0 - 1.0
@@ -182,7 +217,8 @@ class DownloadTask {
 
   String get sizeLabel => formatBytes(sizeBytes);
 
-  String get speedLabel => status.isActive ? '${formatBytes(speedBytesPerSec.round())}/s' : 'â€”';
+  String get speedLabel =>
+      status.isActive ? '${formatBytes(speedBytesPerSec.round())}/s' : '—';
 
   String get etaLabel {
     if (status == TaskStatus.completed) return 'Done';
@@ -190,8 +226,9 @@ class DownloadTask {
     if (status == TaskStatus.canceled) return 'Canceled';
     if (status == TaskStatus.paused) return 'Paused';
     if (status == TaskStatus.queued) return 'Queued';
+    if (status == TaskStatus.connecting) return 'Connecting...';
     final int? eta = etaSeconds;
-    if (eta == null) return 'â€”';
+    if (eta == null) return '—';
     return formatDuration(eta);
   }
 
@@ -204,7 +241,9 @@ class DownloadTask {
       value /= 1024;
       unit++;
     }
-    final String formatted = value >= 100 ? value.toStringAsFixed(0) : value.toStringAsFixed(1);
+    final String formatted = value >= 100
+        ? value.toStringAsFixed(0)
+        : value.toStringAsFixed(1);
     return '$formatted ${units[unit]}';
   }
 

@@ -24,7 +24,9 @@ if __name__ == "__main__":
         token,
     )
     ipc.start()
-    print(f"headless app running, IPC on 127.0.0.1:{ipc.port}, token file at {TOKEN_PATH}")
+    print(
+        f"headless app running, IPC on 127.0.0.1:{ipc.port}, token file at {TOKEN_PATH}"
+    )
 
     while True:
         time.sleep(1)

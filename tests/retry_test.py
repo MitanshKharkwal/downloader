@@ -77,6 +77,7 @@ def test_retry_completed():
     server = start_server(data, port=8768)
 
     import tempfile
+
     with tempfile.TemporaryDirectory() as tmpdir:
         dm = DownloadManager(tmpdir)
         url = "http://127.0.0.1:8768/test_retry_completed.bin"

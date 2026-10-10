@@ -21,10 +21,11 @@ import json
 import os
 import secrets
 import threading
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 # Ensure we can type hint DownloadManager without circular imports
 from typing import TYPE_CHECKING
+
 from core.models import Priority
 
 if TYPE_CHECKING:
@@ -41,7 +42,8 @@ def load_or_create_token(token_path: str) -> str:
             return token
     token = secrets.token_hex(24)
     os.makedirs(os.path.dirname(os.path.abspath(token_path)) or ".", exist_ok=True)
-    with open(token_path, "w") as f:
+    fd = os.open(token_path, os.O_CREAT | os.O_WRONLY | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
         f.write(token)
     return token
 
@@ -139,7 +141,10 @@ def _make_handler(manager: DownloadManager, token: str):
                         from core.models import DownloadTask, DownloadType
 
                         name = args.get("filename", "video.mp4")
-                        final_dest_dir = os.path.join(manager.download_dir, "Video")
+                        category_dirs = manager.get_config().get("category_dirs", {})
+                        final_dest_dir = category_dirs.get("Video") or os.path.join(
+                            manager.download_dir, "Video"
+                        )
                         os.makedirs(final_dest_dir, exist_ok=True)
                         base, ext = os.path.splitext(name)
                         target_path = os.path.join(final_dest_dir, name)
@@ -199,7 +204,8 @@ def _make_handler(manager: DownloadManager, token: str):
                         manager.resume_all()
                         self._send_json(200, {"ok": True})
                     elif method == "cancel":
-                        manager.cancel(args["task_id"])
+                        delete_files = args.get("delete_files", False)
+                        manager.cancel(args["task_id"], delete_files=delete_files)
                         self._send_json(200, {"ok": True})
                     elif method == "set_priority":
                         task_id = args.get("task_id")
@@ -248,8 +254,33 @@ def _make_handler(manager: DownloadManager, token: str):
                     elif method == "set_config":
                         manager.set_config(args.get("config", {}))
                         self._send_json(200, {"ok": True})
+                    elif method == "get_settings":
+                        if hasattr(manager, "app_config"):
+                            self._send_json(
+                                200,
+                                {"ok": True, "settings": manager.app_config.settings},
+                            )
+                        else:
+                            self._send_json(
+                                500, {"ok": False, "error": "No config available"}
+                            )
+
+                    elif method == "update_settings":
+                        if hasattr(manager, "app_config"):
+                            settings = args.get("settings", {})
+                            manager.app_config.update(settings)
+                            manager.app_config.apply_run_on_startup()
+                            manager.apply_config()
+                            self._send_json(200, {"ok": True})
+                        else:
+                            self._send_json(
+                                500, {"ok": False, "error": "No config available"}
+                            )
+
                     else:
-                        self._send_json(400, {"ok": False, "error": "unknown method"})
+                        self._send_json(
+                            400, {"ok": False, "error": "Unknown RPC method"}
+                        )
                 except Exception as exc:
                     self._send_json(500, {"ok": False, "error": str(exc)})
                 return
@@ -266,7 +297,9 @@ class IpcServer:
         self, manager: DownloadManager, token: str, port: int = DEFAULT_PORT
     ) -> None:
         self.port = port
-        self._server = HTTPServer(("127.0.0.1", port), _make_handler(manager, token))
+        self._server = ThreadingHTTPServer(
+            ("127.0.0.1", port), _make_handler(manager, token)
+        )
         self._thread: threading.Thread | None = None
 
     def start(self) -> None:

@@ -15,7 +15,6 @@ from __future__ import annotations
 import os
 import threading
 import time
-import typing
 
 try:
     import libtorrent as lt
@@ -128,6 +127,9 @@ class TorrentDownload:
 
         self._poll_thread = threading.Thread(target=self._poll_loop, daemon=True)
         self._poll_thread.start()
+
+    def stop_threads(self) -> None:
+        self._stop_event.set()
 
     def pause(self) -> None:
         if self.task.status in (

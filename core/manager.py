@@ -16,8 +16,8 @@ import shutil
 import tempfile
 import threading
 import time
-from urllib.parse import unquote, urlparse
 from typing import Any
+from urllib.parse import unquote, urlparse
 
 import requests
 
@@ -78,7 +78,8 @@ class TokenBucket:
             with self._lock:
                 now = time.time()
                 elapsed = now - self._last_fill
-                self._tokens = min(self._capacity, self._tokens + elapsed * self._rate)
+                max_tokens = max(self._capacity, tokens)
+                self._tokens = min(max_tokens, self._tokens + elapsed * self._rate)
                 self._last_fill = now
 
                 if self._tokens >= tokens:
@@ -105,6 +106,17 @@ class DownloadManager:
         self.max_concurrent_downloads = max_concurrent_downloads
         self.max_connections_per_download = max_connections_per_download
 
+        self._config = {
+            "download_dir": download_dir,
+            "max_concurrent_downloads": max_concurrent_downloads,
+            "global_bandwidth_limit": global_bandwidth_limit,
+            "scheduler_enabled": False,
+            "scheduler_start_hour": 2,
+            "scheduler_end_hour": 6,
+            "pause_on_metered": False,
+            "auto_extract": True,
+        }
+
         self.rate_limiter = TokenBucket(global_bandwidth_limit)
         self.state_file = state_file or os.path.join(download_dir, ".dm_state.json")
 
@@ -128,6 +140,21 @@ class DownloadManager:
         self._paused_for_urgent_task_ids: set[str] = set()
 
     # -- public API --------------------------------------------------------
+
+    def apply_config(self) -> None:
+        if not hasattr(self, "app_config"):
+            return
+        config = self.app_config  # type: ignore
+        self.download_dir = str(config.get("download_dir"))
+        self._max_concurrent = int(config.get("max_concurrent"))
+
+        limit_kbps = int(config.get("max_bandwidth_kbps"))
+        limit_bps = limit_kbps * 1024 if limit_kbps > 0 else None
+        self.rate_limiter.rate = limit_bps or 0
+        if self._torrent_session:
+            self._torrent_session.set_download_rate_limit(limit_bps or 0)
+
+        self._maybe_start_next()
 
     def add(
         self,
@@ -210,7 +237,11 @@ class DownloadManager:
             else:
                 category = "Other"
 
-            intended_dir = os.path.join(dest_dir, category)
+            category_dirs = self.get_config().get("category_dirs", {})
+            if category_dirs.get(category):
+                intended_dir = category_dirs[category]
+            else:
+                intended_dir = os.path.join(dest_dir, category)
             intended_base, intended_ext = os.path.splitext(name)
 
         with self._lock:
@@ -239,20 +270,25 @@ class DownloadManager:
                                 ):
                                     return task
 
+        category_dirs = self.get_config().get("category_dirs", {})
+        torrent_dir = category_dirs.get("Torrents")
+        if not torrent_dir:
+            torrent_dir = dest_dir
+
         if _MAGNET_RE.match(source):
             task = DownloadTask(
                 source=source,
-                dest_path=dest_dir,
+                dest_path=torrent_dir,
                 type=DownloadType.TORRENT,
-                category="Other",
+                category="Torrents",
             )
         elif source.lower().endswith(".torrent"):
             local_path = self._materialize_torrent_file(source)
             task = DownloadTask(
                 source=local_path,
-                dest_path=dest_dir,
+                dest_path=torrent_dir,
                 type=DownloadType.TORRENT,
-                category="Other",
+                category="Torrents",
             )
         else:
             final_dest_dir = intended_dir
@@ -302,7 +338,6 @@ class DownloadManager:
         else:
             # Was queued (never started) or app restarted -- just (re)start it.
             self._start_task(self._tasks[task_id])
-
 
     def pause_all(self) -> None:
         with self._lock:
@@ -384,6 +419,8 @@ class DownloadManager:
         if engine:
             if hasattr(engine, "stop_threads"):
                 engine.stop_threads()
+                if hasattr(engine, "_controller_thread") and engine._controller_thread:
+                    engine._controller_thread.join(timeout=2.0)
 
         self._save_state()
         self.events.emit("status", task)
@@ -411,11 +448,18 @@ class DownloadManager:
 
         self.set_priority(task_id, Priority.HIGH)
 
+        should_resume = False
+        should_start = False
         with self._lock:
             if task.status == DownloadStatus.PAUSED:
-                self.resume(task_id)
+                should_resume = True
             elif task.status == DownloadStatus.QUEUED:
-                self._maybe_start_next()
+                should_start = True
+
+        if should_resume:
+            self.resume(task_id)
+        elif should_start:
+            self._maybe_start_next()
 
     def clear_finished(self) -> None:
         """Remove all completed, errored, or canceled tasks from the list."""
@@ -451,10 +495,12 @@ class DownloadManager:
         self.events.emit("tasks_cleared", [task_id])
 
     def get(self, task_id: str) -> DownloadTask | None:
-        return self._tasks.get(task_id)
+        with self._lock:
+            return self._tasks.get(task_id)
 
     def list_tasks(self) -> list[DownloadTask]:
-        return list(self._tasks.values())
+        with self._lock:
+            return list(self._tasks.values())
 
     def shutdown(self) -> None:
         for task_id in list(self._engines):
@@ -468,13 +514,11 @@ class DownloadManager:
         self._save_state()
 
     def get_config(self) -> dict:
-        return {
-            "download_dir": self.download_dir,
-            "max_concurrent_downloads": self.max_concurrent_downloads,
-            "global_bandwidth_limit": self.rate_limiter.rate,
-        }
+        return self._config.copy()
 
     def set_config(self, config: dict) -> None:
+        self._config.update(config)
+
         if "download_dir" in config:
             self.download_dir = config["download_dir"]
             os.makedirs(self.download_dir, exist_ok=True)
@@ -485,6 +529,9 @@ class DownloadManager:
 
         self._save_state()
         self._maybe_start_next()
+
+        if hasattr(self, "app_config"):
+            self.app_config.update(config)
 
     # -- scheduling ----------------------------------------------------------
 
@@ -715,7 +762,7 @@ class DownloadManager:
                         t = self._tasks.get(tid)
                         should_resume = t and getattr(t, "was_paused_for_urgent", False)
                         if should_resume and t:
-                            setattr(t, "was_paused_for_urgent", False)
+                            t.was_paused_for_urgent = False
                     if should_resume:
                         self.resume(tid)
                 if hasattr(self, "_paused_for_urgent_task_ids"):
@@ -791,6 +838,7 @@ class DownloadManager:
 
         if isinstance(manifest, dict):
             config = manifest.get("config", {})
+            self._config.update(config)
             if "download_dir" in config:
                 self.download_dir = config["download_dir"]
             if "max_concurrent_downloads" in config:

@@ -14,7 +14,10 @@ class NavItem {
 }
 
 final List<NavItem> kNavItems = <NavItem>[
-  NavItem(label: 'All Downloads', icon: PhosphorIcons.download(PhosphorIconsStyle.light)),
+  NavItem(
+    label: 'All Downloads',
+    icon: PhosphorIcons.download(PhosphorIconsStyle.light),
+  ),
   NavItem(
     label: 'Video',
     icon: PhosphorIcons.videoCamera(PhosphorIconsStyle.light),
@@ -44,6 +47,11 @@ final List<NavItem> kNavItems = <NavItem>[
     label: 'Photos',
     icon: PhosphorIcons.image(PhosphorIconsStyle.light),
     category: TaskCategory.photos,
+  ),
+  NavItem(
+    label: 'Torrents',
+    icon: PhosphorIcons.magnet(PhosphorIconsStyle.light),
+    category: TaskCategory.torrents,
   ),
   NavItem(
     label: 'Other',
@@ -85,7 +93,10 @@ class Sidebar extends StatelessWidget {
           _Brand(collapsed: collapsed),
           Padding(
             padding: EdgeInsets.symmetric(horizontal: collapsed ? 12 : 14),
-            child: _NewDownloadButton(collapsed: collapsed, onPressed: onNewDownload),
+            child: _NewDownloadButton(
+              collapsed: collapsed,
+              onPressed: onNewDownload,
+            ),
           ),
           const SizedBox(height: 18),
           if (!collapsed)
@@ -120,7 +131,10 @@ class Sidebar extends StatelessWidget {
           Padding(
             padding: EdgeInsets.fromLTRB(12, 10, 12, 14),
             child: _SidebarTile(
-              item: NavItem(label: 'Settings', icon: PhosphorIcons.gear(PhosphorIconsStyle.light)),
+              item: NavItem(
+                label: 'Settings',
+                icon: PhosphorIcons.gear(PhosphorIconsStyle.light),
+              ),
               selected: false,
               count: 0,
               collapsed: collapsed,
@@ -147,7 +161,11 @@ class _Brand extends StatelessWidget {
         borderRadius: AppRadius.sm,
         color: AppColors.accent,
       ),
-      child: Icon(PhosphorIcons.arrowDown(PhosphorIconsStyle.light), size: 14, color: Colors.white),
+      child: Icon(
+        PhosphorIcons.arrowDown(PhosphorIconsStyle.light),
+        size: 14,
+        color: Colors.white,
+      ),
     );
 
     return Padding(
@@ -159,9 +177,10 @@ class _Brand extends StatelessWidget {
             const SizedBox(width: 10),
             Text(
               'Fetchly',
-              style: Theme.of(
-                context,
-              ).textTheme.titleMedium?.copyWith(fontSize: 15, color: AppColors.textPrimary),
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                fontSize: 15,
+                color: AppColors.textPrimary,
+              ),
             ),
           ],
         ],
@@ -202,7 +221,11 @@ class _NewDownloadButtonState extends State<_NewDownloadButton> {
               borderRadius: AppRadius.md,
             ),
             child: widget.collapsed
-                ? Icon(PhosphorIcons.plus(PhosphorIconsStyle.light), size: 18, color: Colors.white)
+                ? Icon(
+                    PhosphorIcons.plus(PhosphorIconsStyle.light),
+                    size: 18,
+                    color: Colors.white,
+                  )
                 : Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: <Widget>[
@@ -273,8 +296,12 @@ class _SidebarTileState extends State<_SidebarTile> {
             child: AnimatedContainer(
               duration: AppTheme.fast,
               height: 36,
-              padding: EdgeInsets.symmetric(horizontal: widget.collapsed ? 0 : 10),
-              alignment: widget.collapsed ? Alignment.center : Alignment.centerLeft,
+              padding: EdgeInsets.symmetric(
+                horizontal: widget.collapsed ? 0 : 10,
+              ),
+              alignment: widget.collapsed
+                  ? Alignment.center
+                  : Alignment.centerLeft,
               decoration: BoxDecoration(
                 color: Colors.transparent,
                 borderRadius: AppRadius.sm,
@@ -296,7 +323,9 @@ class _SidebarTileState extends State<_SidebarTile> {
                             overflow: TextOverflow.ellipsis,
                             style: text.bodyMedium?.copyWith(
                               fontSize: 13,
-                              fontWeight: widget.selected ? FontWeight.w600 : FontWeight.w400,
+                              fontWeight: widget.selected
+                                  ? FontWeight.w600
+                                  : FontWeight.w400,
                               color: fg,
                             ),
                           ),
@@ -320,4 +349,3 @@ class _SidebarTileState extends State<_SidebarTile> {
     );
   }
 }
-

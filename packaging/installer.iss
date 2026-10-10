@@ -10,7 +10,8 @@ OutputBaseFilename=DownloaderSetup
 Source: "..\packaging\dist\downloader-daemon.exe"; DestDir: "{app}"
 Source: "..\packaging\dist\downloader-native-host.exe"; DestDir: "{app}\native_host"
 Source: "..\packaging\dist\register-native-host.exe"; DestDir: "{app}\native_host"
-
+Source: "..\flutter_ui\build\windows\x64\runner\Release\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\browser_extension\*"; DestDir: "{app}\browser_extension"; Flags: ignoreversion recursesubdirs
 [Icons]
 Name: "{group}\Downloader"; Filename: "{app}\flutter_ui.exe"
 Name: "{group}\Uninstall Downloader"; Filename: "{uninstallexe}"

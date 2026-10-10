@@ -15,6 +15,7 @@ from core.models import DownloadStatus
 
 def test_shutdown():
     import unittest.mock
+
     with unittest.mock.patch("os._exit") as mock_exit:
         with tempfile.TemporaryDirectory() as tmpdir:
             state_file = os.path.join(tmpdir, "state.json")
@@ -33,7 +34,10 @@ def test_shutdown():
                 req = urllib.request.Request(
                     "http://127.0.0.1:47823/rpc",
                     data=json.dumps({"method": "shutdown"}).encode(),
-                    headers={"X-Auth-Token": "test_token", "Content-Type": "application/json"},
+                    headers={
+                        "X-Auth-Token": "test_token",
+                        "Content-Type": "application/json",
+                    },
                     method="POST",
                 )
                 with urllib.request.urlopen(req, timeout=2) as resp:
@@ -51,6 +55,7 @@ def test_shutdown():
 
 def test_set_priority():
     import urllib.error
+
     with tempfile.TemporaryDirectory() as tmpdir:
         state_file = os.path.join(tmpdir, "state.json")
         manager = DownloadManager(download_dir=tmpdir, state_file=state_file)
@@ -64,8 +69,16 @@ def test_set_priority():
             # Test valid priority
             req = urllib.request.Request(
                 "http://127.0.0.1:47824/rpc",
-                data=json.dumps({"method": "set_priority", "args": {"task_id": task.id, "priority": 2}}).encode(),
-                headers={"X-Auth-Token": "test_token", "Content-Type": "application/json"},
+                data=json.dumps(
+                    {
+                        "method": "set_priority",
+                        "args": {"task_id": task.id, "priority": 2},
+                    }
+                ).encode(),
+                headers={
+                    "X-Auth-Token": "test_token",
+                    "Content-Type": "application/json",
+                },
                 method="POST",
             )
             with urllib.request.urlopen(req, timeout=2) as resp:
@@ -76,8 +89,16 @@ def test_set_priority():
             # Test invalid priority string
             req = urllib.request.Request(
                 "http://127.0.0.1:47824/rpc",
-                data=json.dumps({"method": "set_priority", "args": {"task_id": task.id, "priority": "invalid"}}).encode(),
-                headers={"X-Auth-Token": "test_token", "Content-Type": "application/json"},
+                data=json.dumps(
+                    {
+                        "method": "set_priority",
+                        "args": {"task_id": task.id, "priority": "invalid"},
+                    }
+                ).encode(),
+                headers={
+                    "X-Auth-Token": "test_token",
+                    "Content-Type": "application/json",
+                },
                 method="POST",
             )
             try:
@@ -107,14 +128,23 @@ def test_retry():
         try:
             req = urllib.request.Request(
                 "http://127.0.0.1:47825/rpc",
-                data=json.dumps({"method": "retry", "args": {"task_id": task.id}}).encode(),
-                headers={"X-Auth-Token": "test_token", "Content-Type": "application/json"},
+                data=json.dumps(
+                    {"method": "retry", "args": {"task_id": task.id}}
+                ).encode(),
+                headers={
+                    "X-Auth-Token": "test_token",
+                    "Content-Type": "application/json",
+                },
                 method="POST",
             )
             with urllib.request.urlopen(req, timeout=2) as resp:
                 data = json.loads(resp.read())
                 assert data["ok"] is True
-            assert manager.get(task.id).status in (DownloadStatus.QUEUED, DownloadStatus.CONNECTING, DownloadStatus.DOWNLOADING)
+            assert manager.get(task.id).status in (
+                DownloadStatus.QUEUED,
+                DownloadStatus.CONNECTING,
+                DownloadStatus.DOWNLOADING,
+            )
         finally:
             ipc.stop()
 

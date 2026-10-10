@@ -55,7 +55,10 @@ class AppTheme {
       useMaterial3: true,
     ).textTheme.apply(fontFamily: 'General Sans');
     return base
-        .apply(bodyColor: AppColors.textPrimary, displayColor: AppColors.textPrimary)
+        .apply(
+          bodyColor: AppColors.textPrimary,
+          displayColor: AppColors.textPrimary,
+        )
         .copyWith(
           displaySmall: base.displaySmall?.copyWith(
             fontWeight: FontWeight.w700,
@@ -65,9 +68,18 @@ class AppTheme {
             fontWeight: FontWeight.w700,
             letterSpacing: -0.8,
           ),
-          titleMedium: base.titleMedium?.copyWith(fontWeight: FontWeight.w600, letterSpacing: -0.2),
-          bodyMedium: base.bodyMedium?.copyWith(height: 1.4, fontWeight: FontWeight.w400),
-          labelSmall: base.labelSmall?.copyWith(fontWeight: FontWeight.w400, letterSpacing: 0.2),
+          titleMedium: base.titleMedium?.copyWith(
+            fontWeight: FontWeight.w600,
+            letterSpacing: -0.2,
+          ),
+          bodyMedium: base.bodyMedium?.copyWith(
+            height: 1.4,
+            fontWeight: FontWeight.w400,
+          ),
+          labelSmall: base.labelSmall?.copyWith(
+            fontWeight: FontWeight.w400,
+            letterSpacing: 0.2,
+          ),
         );
   }
 
@@ -82,7 +94,11 @@ class AppTheme {
       textTheme: text,
       splashFactory: NoSplash.splashFactory,
       highlightColor: Colors.transparent,
-      dividerTheme: const DividerThemeData(color: AppColors.border, thickness: 1, space: 1),
+      dividerTheme: const DividerThemeData(
+        color: AppColors.border,
+        thickness: 1,
+        space: 1,
+      ),
       colorScheme: const ColorScheme.dark(
         primary: AppColors.accent,
         onPrimary: Colors.white,
@@ -110,7 +126,10 @@ class AppTheme {
         filled: true,
         fillColor: AppColors.surface,
         isDense: true,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 12,
+          vertical: 12,
+        ),
         hintStyle: text.bodySmall?.copyWith(color: AppColors.textMuted),
         border: OutlineInputBorder(
           borderRadius: AppRadius.sm,

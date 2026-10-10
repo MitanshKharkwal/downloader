@@ -71,12 +71,38 @@ class _TaskListState extends State<TaskList> {
 
     for (int i = 0; i < newList.length; i++) {
       final DownloadTask task = newList[i];
-      if (i >= _items.length || _items[i].id != task.id) {
+      if (i >= _items.length) {
+        _items.add(task);
+        _listKey.currentState?.insertItem(
+          i,
+          duration: const Duration(milliseconds: 220),
+        );
+      } else if (_items[i].id != task.id) {
+        final oldItem = _items.removeAt(i);
+        _listKey.currentState?.removeItem(
+          i,
+          (context, animation) =>
+              _buildItem(oldItem, animation, isRemoving: true),
+          duration: const Duration(milliseconds: 200),
+        );
         _items.insert(i, task);
-        _listKey.currentState?.insertItem(i, duration: const Duration(milliseconds: 220));
+        _listKey.currentState?.insertItem(
+          i,
+          duration: const Duration(milliseconds: 220),
+        );
       } else {
         _items[i] = task;
       }
+    }
+
+    while (_items.length > newList.length) {
+      final oldItem = _items.removeLast();
+      _listKey.currentState?.removeItem(
+        _items.length,
+        (context, animation) =>
+            _buildItem(oldItem, animation, isRemoving: true),
+        duration: const Duration(milliseconds: 200),
+      );
     }
   }
 
@@ -105,11 +131,17 @@ class _TaskListState extends State<TaskList> {
       );
     }
 
-    final CurvedAnimation curved = CurvedAnimation(parent: animation, curve: Curves.easeOutCubic);
+    final CurvedAnimation curved = CurvedAnimation(
+      parent: animation,
+      curve: Curves.easeOutCubic,
+    );
     final Widget animatedChild = FadeTransition(
       opacity: curved,
       child: SlideTransition(
-        position: Tween<Offset>(begin: const Offset(0, 0.2), end: Offset.zero).animate(curved),
+        position: Tween<Offset>(
+          begin: const Offset(0, 0.2),
+          end: Offset.zero,
+        ).animate(curved),
         child: child,
       ),
     );
@@ -128,9 +160,10 @@ class _TaskListState extends State<TaskList> {
       key: _listKey,
       initialItemCount: _items.length,
       padding: const EdgeInsets.fromLTRB(28, 4, 28, 28),
-      itemBuilder: (BuildContext context, int index, Animation<double> animation) {
-        return _buildItem(_items[index], animation, index: index);
-      },
+      itemBuilder:
+          (BuildContext context, int index, Animation<double> animation) {
+            return _buildItem(_items[index], animation, index: index);
+          },
     );
   }
 }
@@ -172,7 +205,10 @@ class _StaggeredEntranceState extends State<_StaggeredEntrance> {
       builder: (BuildContext context, double val, Widget? child) {
         return Opacity(
           opacity: val,
-          child: Transform.translate(offset: Offset(0, 8 * (1 - val)), child: child),
+          child: Transform.translate(
+            offset: Offset(0, 8 * (1 - val)),
+            child: child,
+          ),
         );
       },
       child: widget.child,
@@ -188,9 +224,11 @@ class TaskListHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final TextStyle? style = Theme.of(
-      context,
-    ).textTheme.labelSmall?.copyWith(color: AppColors.textMuted, fontSize: 10, letterSpacing: 0.5);
+    final TextStyle? style = Theme.of(context).textTheme.labelSmall?.copyWith(
+      color: AppColors.textMuted,
+      fontSize: 10,
+      letterSpacing: 0.5,
+    );
 
     return Container(
       padding: const EdgeInsets.fromLTRB(42, 0, 42, 10),

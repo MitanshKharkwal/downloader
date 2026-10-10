@@ -1,4 +1,3 @@
-import 'dart:ui';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -11,6 +10,7 @@ import '../widgets/add_url_dialog.dart';
 import '../models/download_task.dart';
 import '../theme/app_theme.dart';
 import '../widgets/empty_state.dart';
+import '../widgets/settings_dialog.dart';
 import '../widgets/sidebar.dart';
 import '../widgets/task_list.dart';
 
@@ -80,7 +80,10 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
                 child: const SelectableText(
                   'cd native_host && .\\register-native-host.exe --extension-id <YOUR_EXTENSION_ID>',
-                  style: TextStyle(color: AppColors.textPrimary, fontFamily: 'monospace'),
+                  style: TextStyle(
+                    color: AppColors.textPrimary,
+                    fontFamily: 'monospace',
+                  ),
                 ),
               ),
             ],
@@ -90,19 +93,28 @@ class _HomeScreenState extends State<HomeScreen> {
               onPressed: () {
                 Clipboard.setData(
                   const ClipboardData(
-                    text: 'cd native_host && .\\register-native-host.exe --extension-id ',
+                    text:
+                        'cd native_host && .\\register-native-host.exe --extension-id ',
                   ),
                 );
-                ScaffoldMessenger.of(
-                  context,
-                ).showSnackBar(const SnackBar(content: Text('Command copied!')));
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Command copied!')),
+                );
               },
-              child: const Text('Copy Command', style: TextStyle(color: AppColors.accent)),
+              child: const Text(
+                'Copy Command',
+                style: TextStyle(color: AppColors.accent),
+              ),
             ),
             ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: AppColors.accent),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.accent,
+              ),
               onPressed: () => Navigator.pop(context),
-              child: const Text('Got it', style: TextStyle(color: AppColors.textPrimary)),
+              child: const Text(
+                'Got it',
+                style: TextStyle(color: AppColors.textPrimary),
+              ),
             ),
           ],
         );
@@ -174,7 +186,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ) {
             return AddUrlDialog(
               onAdd: (String url) async {
-                // onAdd is now async â€” throws on error so dialog can show it inline
+                // onAdd is now async — throws on error so dialog can show it inline
                 await _ipcClient.addUrl(url);
                 await _fetchTasks();
               },
@@ -190,7 +202,10 @@ class _HomeScreenState extends State<HomeScreen> {
             final double curve = Curves.easeOutCubic.transform(animation.value);
             return Opacity(
               opacity: curve,
-              child: Transform.scale(scale: 0.95 + (0.05 * curve), child: child),
+              child: Transform.scale(
+                scale: 0.95 + (0.05 * curve),
+                child: child,
+              ),
             );
           },
     );
@@ -200,40 +215,7 @@ class _HomeScreenState extends State<HomeScreen> {
     showDialog<void>(
       context: context,
       barrierColor: Colors.black54,
-      builder: (BuildContext context) => Dialog(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        child: ClipRRect(
-          borderRadius: AppRadius.lg,
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-            child: Container(
-              decoration: BoxDecoration(
-                color: AppColors.surface.withValues(alpha: 0.6),
-                border: Border.all(color: AppColors.border),
-                borderRadius: AppRadius.lg,
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Text('Settings', style: Theme.of(context).textTheme.titleMedium),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Download location, bandwidth limits and connection settings would live here.',
-                      style: Theme.of(
-                        context,
-                      ).textTheme.bodySmall?.copyWith(color: AppColors.textMuted, height: 1.5),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
+      builder: (BuildContext context) => const SettingsDialog(),
     );
   }
 
@@ -295,14 +277,20 @@ class _HomeScreenState extends State<HomeScreen> {
                         decoration: const BoxDecoration(
                           color: AppColors.danger,
                           boxShadow: <BoxShadow>[
-                            BoxShadow(color: Colors.black26, blurRadius: 8, offset: Offset(0, 4)),
+                            BoxShadow(
+                              color: Colors.black26,
+                              blurRadius: 8,
+                              offset: Offset(0, 4),
+                            ),
                           ],
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: <Widget>[
                             Icon(
-                              PhosphorIcons.warningCircle(PhosphorIconsStyle.fill),
+                              PhosphorIcons.warningCircle(
+                                PhosphorIconsStyle.fill,
+                              ),
                               color: Colors.white,
                               size: 20,
                             ),
@@ -346,7 +334,7 @@ class _HomeScreenState extends State<HomeScreen> {
           title: item.label,
           subtitle: _visible.isEmpty
               ? 'Nothing here yet'
-              : '${_visible.length} item${_visible.length == 1 ? '' : 's'} Â· $activeCount active',
+              : '${_visible.length} item${_visible.length == 1 ? '' : 's'} \u00b7 $activeCount active',
           controller: _searchController,
           onQueryChanged: (String value) {
             _query = value;
@@ -412,7 +400,7 @@ class _HomeScreenState extends State<HomeScreen> {
         actionLabel: 'New Download',
       );
     }
-    // 3. Truly empty â€” no tasks at all
+    // 3. Truly empty — no tasks at all
     return EmptyState(
       title: 'No downloads yet',
       subtitle: 'Click the button below or press Ctrl+N to add a new download.',
@@ -460,12 +448,17 @@ class _Header extends StatelessWidget {
                   title,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: text.headlineMedium?.copyWith(fontSize: compact ? 22 : 26),
+                  style: text.headlineMedium?.copyWith(
+                    fontSize: compact ? 22 : 26,
+                  ),
                 ),
                 const SizedBox(height: 6),
                 Text(
                   subtitle,
-                  style: text.bodySmall?.copyWith(color: AppColors.textMuted, fontSize: 11),
+                  style: text.bodySmall?.copyWith(
+                    color: AppColors.textMuted,
+                    fontSize: 11,
+                  ),
                 ),
               ],
             ),
@@ -478,13 +471,16 @@ class _Header extends StatelessWidget {
               onChanged: onQueryChanged,
               style: text.bodySmall?.copyWith(fontSize: 13),
               decoration: InputDecoration(
-                hintText: 'Search downloadsâ€¦',
+                hintText: 'Search downloads\u2026',
                 prefixIcon: Icon(
                   PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.light),
                   size: 16,
                   color: AppColors.textMuted,
                 ),
-                prefixIconConstraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                prefixIconConstraints: const BoxConstraints(
+                  minWidth: 36,
+                  minHeight: 36,
+                ),
               ),
             ),
           ),

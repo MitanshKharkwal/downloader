@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:phosphor_icons/phosphor_icons.dart';
 
@@ -43,7 +44,8 @@ class _TaskCardState extends State<TaskCard> {
   /// Debounce: timestamp of last action to prevent rapid duplicate RPCs.
   int _lastActionMs = 0;
 
-  bool get _isDebouncing => DateTime.now().millisecondsSinceEpoch - _lastActionMs < 300;
+  bool get _isDebouncing =>
+      DateTime.now().millisecondsSinceEpoch - _lastActionMs < 300;
 
   TaskStatus get _displayStatus => _optimisticStatus ?? widget.task.status;
 
@@ -83,7 +85,8 @@ class _TaskCardState extends State<TaskCard> {
     final DownloadTask task = widget.task;
     final TextTheme text = Theme.of(context).textTheme;
     final TaskStatus status = _displayStatus;
-    final bool dimmed = status == TaskStatus.paused || status == TaskStatus.queued;
+    final bool dimmed =
+        status == TaskStatus.paused || status == TaskStatus.queued;
     final bool isError = status == TaskStatus.error;
     final bool isDone = status == TaskStatus.completed;
 
@@ -113,114 +116,122 @@ class _TaskCardState extends State<TaskCard> {
           duration: AppTheme.fast,
           opacity: dimmed ? 0.55 : 1,
           child: Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: <Widget>[
-                _FileIcon(task: task, displayStatus: status),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: <Widget>[
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: <Widget>[
+              _FileIcon(task: task, displayStatus: status),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    Row(
+                      children: <Widget>[
+                        Flexible(
+                          child: Text(
+                            task.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: text.bodyMedium?.copyWith(
+                              fontSize: 13.5,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.textPrimary,
+                            ),
+                          ),
+                        ),
+                        if (isDone) ...<Widget>[
+                          const SizedBox(width: 8),
+                          Icon(
+                            PhosphorIcons.checkCircle(PhosphorIconsStyle.fill),
+                            size: 15,
+                            color: AppColors.success,
+                          ),
+                        ],
+                      ],
+                    ),
+                    const SizedBox(height: 7),
+                    if (isDone)
+                      Text(
+                        '${task.sizeLabel} · Completed',
+                        style: text.labelSmall?.copyWith(
+                          color: AppColors.textMuted,
+                          fontSize: 11,
+                        ),
+                      )
+                    else if (isError)
                       Row(
                         children: <Widget>[
-                          Flexible(
+                          Expanded(
                             child: Text(
-                              task.title,
+                              task.errorMessage ?? 'Download failed',
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: text.bodyMedium?.copyWith(
-                                fontSize: 13.5,
-                                fontWeight: FontWeight.w600,
-                                color: AppColors.textPrimary,
+                              style: text.labelSmall?.copyWith(
+                                color: AppColors.danger,
+                                fontSize: 11,
                               ),
                             ),
                           ),
-                          if (isDone) ...<Widget>[
-                            const SizedBox(width: 8),
-                            Icon(
-                              PhosphorIcons.checkCircle(PhosphorIconsStyle.fill),
-                              size: 15,
-                              color: AppColors.success,
+                        ],
+                      )
+                    else
+                      Row(
+                        children: <Widget>[
+                          const Spacer(),
+                          const SizedBox(width: 10),
+                          SizedBox(
+                            width: 34,
+                            child: TweenAnimationBuilder<double>(
+                              tween: Tween<double>(
+                                begin: task.progress,
+                                end: task.progress,
+                              ),
+                              duration: const Duration(milliseconds: 750),
+                              curve: Curves.easeOut,
+                              builder:
+                                  (
+                                    BuildContext context,
+                                    double val,
+                                    Widget? child,
+                                  ) {
+                                    return Text(
+                                      '${(val * 100).round()}%',
+                                      textAlign: TextAlign.right,
+                                      style: text.labelSmall?.copyWith(
+                                        color: AppColors.textMuted,
+                                        fontSize: 11,
+                                        fontFamily: AppFonts.mono,
+                                        fontFeatures: const <FontFeature>[
+                                          FontFeature.tabularFigures(),
+                                        ],
+                                      ),
+                                    );
+                                  },
                             ),
-                          ],
+                          ),
                         ],
                       ),
-                      const SizedBox(height: 7),
-                      if (isDone)
-                        Text(
-                          '${task.sizeLabel} · Completed',
-                          style: text.labelSmall?.copyWith(
-                            color: AppColors.textMuted,
-                            fontSize: 11,
-                          ),
-                        )
-                      else if (isError)
-                        Row(
-                          children: <Widget>[
-                            Expanded(
-                              child: Text(
-                                task.errorMessage ?? 'Download failed',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: text.labelSmall?.copyWith(
-                                  color: AppColors.danger,
-                                  fontSize: 11,
-                                ),
-                              ),
-                            ),
-                          ],
-                        )
-                      else
-                        Row(
-                          children: <Widget>[
-                            const Spacer(),
-                            const SizedBox(width: 10),
-                            SizedBox(
-                              width: 34,
-                              child: TweenAnimationBuilder<double>(
-                                tween: Tween<double>(begin: task.progress, end: task.progress),
-                                duration: const Duration(milliseconds: 750),
-                                curve: Curves.easeOut,
-                                builder: (BuildContext context, double val, Widget? child) {
-                                  return Text(
-                                    '${(val * 100).round()}%',
-                                    textAlign: TextAlign.right,
-                                    style: text.labelSmall?.copyWith(
-                                      color: AppColors.textMuted,
-                                      fontSize: 11,
-                                      fontFamily: AppFonts.mono,
-                                      fontFeatures: const <FontFeature>[
-                                        FontFeature.tabularFigures(),
-                                      ],
-                                    ),
-                                  );
-                                },
-                              ),
-                            ),
-                          ],
-                        ),
-                    ],
-                  ),
+                  ],
                 ),
-                const SizedBox(width: 16),
-                _Stats(task: task, compact: widget.compact),
-                const SizedBox(width: 8),
-                ActionsWidget(
-                  task: task,
-                  displayStatus: status,
-                  visible: _hovered,
-                  onPause: _handlePause,
-                  onResume: _handleResume,
-                  onRetry: widget.onRetry,
-                  onCancel: widget.onCancel,
-                  onRemove: widget.onRemove,
-                  onPriority: widget.onPriority,
-                ),
-              ],
-            ),
+              ),
+              const SizedBox(width: 16),
+              _Stats(task: task, compact: widget.compact),
+              const SizedBox(width: 8),
+              ActionsWidget(
+                task: task,
+                displayStatus: status,
+                visible: _hovered,
+                onPause: _handlePause,
+                onResume: _handleResume,
+                onRetry: widget.onRetry,
+                onCancel: widget.onCancel,
+                onRemove: widget.onRemove,
+                onPriority: widget.onPriority,
+              ),
+            ],
           ),
         ),
+      ),
     );
   }
 }
@@ -326,7 +337,10 @@ class _Stats extends StatelessWidget {
         ),
         if (!compact) ...<Widget>[
           if (task.status.isActive) ...<Widget>[
-            SpeedSparkline(speedBytesPerSec: task.speedBytesPerSec, active: task.status.isActive),
+            SpeedSparkline(
+              speedBytesPerSec: task.speedBytesPerSec,
+              active: task.status.isActive,
+            ),
             const SizedBox(width: 8),
           ],
           SizedBox(
@@ -334,7 +348,11 @@ class _Stats extends StatelessWidget {
             child: Text(
               task.speedLabel,
               textAlign: TextAlign.right,
-              style: style(task.status.isActive ? AppColors.textPrimary : AppColors.textMuted),
+              style: style(
+                task.status.isActive
+                    ? AppColors.textPrimary
+                    : AppColors.textMuted,
+              ),
             ),
           ),
           SizedBox(
@@ -370,7 +388,10 @@ class _CancelConfirmRow extends StatelessWidget {
             'Cancel download?',
             overflow: TextOverflow.ellipsis,
             maxLines: 1,
-            style: text.labelSmall?.copyWith(color: AppColors.textSecondary, fontSize: 11),
+            style: text.labelSmall?.copyWith(
+              color: AppColors.textSecondary,
+              fontSize: 11,
+            ),
           ),
         ),
         const SizedBox(width: 6),
@@ -383,7 +404,11 @@ class _CancelConfirmRow extends StatelessWidget {
 }
 
 class _SmallButton extends StatefulWidget {
-  const _SmallButton({required this.label, required this.color, required this.onTap});
+  const _SmallButton({
+    required this.label,
+    required this.color,
+    required this.onTap,
+  });
   final String label;
   final Color color;
   final VoidCallback onTap;
@@ -407,13 +432,21 @@ class _SmallButtonState extends State<_SmallButton> {
           duration: AppTheme.fast,
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
           decoration: BoxDecoration(
-            color: _hovered ? widget.color.withValues(alpha: 0.2) : Colors.transparent,
+            color: _hovered
+                ? widget.color.withValues(alpha: 0.2)
+                : Colors.transparent,
             borderRadius: AppRadius.sm,
-            border: Border.all(color: widget.color.withValues(alpha: _hovered ? 0.6 : 0.35)),
+            border: Border.all(
+              color: widget.color.withValues(alpha: _hovered ? 0.6 : 0.35),
+            ),
           ),
           child: Text(
             widget.label,
-            style: TextStyle(color: widget.color, fontSize: 11, fontWeight: FontWeight.w600),
+            style: TextStyle(
+              color: widget.color,
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+            ),
           ),
         ),
       ),
@@ -482,11 +515,24 @@ class _ActionsState extends State<ActionsWidget> {
 
     switch (status) {
       case TaskStatus.downloading:
-        buttons.add(_PlayPauseAction(isPlaying: true, tip: 'Pause', onTap: widget.onPause));
+      case TaskStatus.connecting:
+        buttons.add(
+          _PlayPauseAction(
+            isPlaying: true,
+            tip: 'Pause',
+            onTap: widget.onPause,
+          ),
+        );
         break;
       case TaskStatus.paused:
       case TaskStatus.queued:
-        buttons.add(_PlayPauseAction(isPlaying: false, tip: 'Resume', onTap: widget.onResume));
+        buttons.add(
+          _PlayPauseAction(
+            isPlaying: false,
+            tip: 'Resume',
+            onTap: widget.onResume,
+          ),
+        );
         break;
       case TaskStatus.error:
         buttons.add(
@@ -503,7 +549,16 @@ class _ActionsState extends State<ActionsWidget> {
           _IconAction(
             icon: PhosphorIcons.folderOpen(PhosphorIconsStyle.light),
             tip: 'Show in folder',
-            onTap: () {},
+            onTap: () {
+              if (widget.task.filePath != null &&
+                  widget.task.filePath!.isNotEmpty) {
+                Process.run('explorer', ['/select,', widget.task.filePath!]);
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('File path not available')),
+                );
+              }
+            },
           ),
         );
         break;
@@ -538,13 +593,16 @@ class _ActionsState extends State<ActionsWidget> {
 
     // X button: for completed/canceled = instant Remove (no confirm needed per spec)
     //           for active/queued/paused = shows inline confirm first
-    final bool isDoneOrCanceled = status == TaskStatus.completed || status == TaskStatus.canceled;
+    final bool isDoneOrCanceled =
+        status == TaskStatus.completed || status == TaskStatus.canceled;
 
     buttons.add(
       _IconAction(
         icon: PhosphorIcons.x(PhosphorIconsStyle.light),
         tip: isDoneOrCanceled ? 'Remove' : 'Cancel',
-        onTap: isDoneOrCanceled ? widget.onRemove : () => setState(() => _confirmingCancel = true),
+        onTap: isDoneOrCanceled
+            ? widget.onRemove
+            : () => setState(() => _confirmingCancel = true),
       ),
     );
 
@@ -555,7 +613,10 @@ class _ActionsState extends State<ActionsWidget> {
         opacity: widget.visible ? 1 : 0,
         child: IgnorePointer(
           ignoring: !widget.visible,
-          child: Row(mainAxisAlignment: MainAxisAlignment.end, children: buttons),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: buttons,
+          ),
         ),
       ),
     );
@@ -563,7 +624,12 @@ class _ActionsState extends State<ActionsWidget> {
 }
 
 class _IconAction extends StatefulWidget {
-  const _IconAction({required this.icon, required this.tip, required this.onTap, this.color});
+  const _IconAction({
+    required this.icon,
+    required this.tip,
+    required this.onTap,
+    this.color,
+  });
 
   final IconData icon;
   final String tip;
@@ -580,7 +646,9 @@ class _IconActionState extends State<_IconAction> {
 
   @override
   Widget build(BuildContext context) {
-    final Color fg = widget.color ?? (_hovered ? AppColors.textPrimary : AppColors.textSecondary);
+    final Color fg =
+        widget.color ??
+        (_hovered ? AppColors.textPrimary : AppColors.textSecondary);
 
     return Padding(
       padding: const EdgeInsets.only(left: 4),
@@ -604,9 +672,15 @@ class _IconActionState extends State<_IconAction> {
                 height: 28,
                 width: 28,
                 decoration: BoxDecoration(
-                  color: _hovered ? AppColors.surfaceActive : Colors.transparent,
+                  color: _hovered
+                      ? AppColors.surfaceActive
+                      : Colors.transparent,
                   borderRadius: AppRadius.sm,
-                  border: Border.all(color: _hovered ? AppColors.borderStrong : Colors.transparent),
+                  border: Border.all(
+                    color: _hovered
+                        ? AppColors.borderStrong
+                        : Colors.transparent,
+                  ),
                 ),
                 child: Icon(widget.icon, size: 15, color: fg),
               ),
@@ -619,7 +693,11 @@ class _IconActionState extends State<_IconAction> {
 }
 
 class _PlayPauseAction extends StatefulWidget {
-  const _PlayPauseAction({required this.isPlaying, required this.tip, required this.onTap});
+  const _PlayPauseAction({
+    required this.isPlaying,
+    required this.tip,
+    required this.onTap,
+  });
 
   final bool isPlaying;
   final String tip;
@@ -629,7 +707,8 @@ class _PlayPauseAction extends StatefulWidget {
   State<_PlayPauseAction> createState() => _PlayPauseActionState();
 }
 
-class _PlayPauseActionState extends State<_PlayPauseAction> with SingleTickerProviderStateMixin {
+class _PlayPauseActionState extends State<_PlayPauseAction>
+    with SingleTickerProviderStateMixin {
   bool _hovered = false;
   bool _pressed = false;
   late final AnimationController _controller;
@@ -689,9 +768,15 @@ class _PlayPauseActionState extends State<_PlayPauseAction> with SingleTickerPro
                 height: 28,
                 width: 28,
                 decoration: BoxDecoration(
-                  color: _hovered ? AppColors.surfaceActive : Colors.transparent,
+                  color: _hovered
+                      ? AppColors.surfaceActive
+                      : Colors.transparent,
                   borderRadius: AppRadius.sm,
-                  border: Border.all(color: _hovered ? AppColors.borderStrong : Colors.transparent),
+                  border: Border.all(
+                    color: _hovered
+                        ? AppColors.borderStrong
+                        : Colors.transparent,
+                  ),
                 ),
                 child: AnimatedIcon(
                   icon: AnimatedIcons.play_pause,

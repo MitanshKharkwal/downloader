@@ -42,10 +42,12 @@ async function getHeadersForUrl(url) {
 chrome.runtime.onInstalled.addListener(() => {
   chrome.alarms.create("keepalive", { periodInMinutes: 0.4 });
 
-  chrome.contextMenus.create({
-    id: "send-to-dm",
-    title: "Send link to Download Manager",
-    contexts: ["link"],
+  chrome.contextMenus.removeAll(() => {
+    chrome.contextMenus.create({
+      id: "send-to-dm",
+      title: "Send link to Download Manager",
+      contexts: ["link"],
+    });
   });
 });
 
@@ -63,14 +65,22 @@ chrome.downloads.onCreated.addListener(async (item) => {
 
   console.log("[DM] Intercepting download:", item.url);
 
-  // Cancel the browser's download immediately
-  chrome.downloads.cancel(item.id, () => {
-    chrome.downloads.erase({ id: item.id });
-  });
-
   const headers = await getHeadersForUrl(item.url);
   const result = await sendToNativeHost({ action: "add", source: item.url, filename: item.filename, headers });
   console.log("[DM] Native host response:", result);
+  
+  if (result && result.ok) {
+    chrome.downloads.cancel(item.id, () => {
+      chrome.downloads.erase({ id: item.id });
+    });
+  } else {
+    chrome.notifications.create({
+      type: "basic",
+      iconUrl: "icons/icon128.png",
+      title: "Download Manager Error",
+      message: "Failed to send download to app. The browser will download it normally."
+    });
+  }
   chrome.storage.local.set({ lastResult: { ...result, source: item.url, at: Date.now() } });
 });
 

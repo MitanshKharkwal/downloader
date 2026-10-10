@@ -108,7 +108,9 @@ def main() -> None:
         target_path = frozen_exe
     else:
         # Fallback for dev mode
-        print("Detected source environment. Generating .bat wrapper for Python execution.")
+        print(
+            "Detected source environment. Generating .bat wrapper for Python execution."
+        )
         target_path = write_wrapper_bat()
 
     manifest_path = write_manifest(target_path, args.extension_id)
