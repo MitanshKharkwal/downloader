@@ -1,7 +1,7 @@
 [Setup]
 AppName=Downloader
-AppVersion=1.1.0
-VersionInfoVersion=1.1.0.0
+AppVersion=1.2.0
+VersionInfoVersion=1.2.0.0
 AppPublisher=MitanshKharkwal
 AppPublisherURL=https://github.com/MitanshKharkwal/downloader
 AppSupportURL=https://github.com/MitanshKharkwal/downloader/issues

@@ -28,3 +28,50 @@ document.addEventListener(
   },
   true // capture phase
 );
+
+const downloadFilters = {
+  all: null,
+  documents: new Set(['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'csv']),
+  media: new Set(['mp4', 'mkv', 'avi', 'mov', 'webm', 'mp3', 'wav', 'flac', 'm4a', 'jpg', 'jpeg', 'png', 'gif', 'webp']),
+  archives: new Set(['zip', 'rar', '7z', 'tar', 'gz', 'bz2', 'iso']),
+  programs: new Set(['exe', 'msi', 'msix', 'apk', 'dmg', 'pkg', 'deb', 'rpm']),
+};
+
+function linksOnPage(filter = 'all') {
+  const extensions = downloadFilters[filter] || null;
+  const seen = new Set();
+  const items = [];
+  for (const anchor of document.querySelectorAll('a[href]')) {
+    let url;
+    try {
+      url = new URL(anchor.href, document.baseURI);
+    } catch (_) {
+      continue;
+    }
+    if (!['http:', 'https:', 'magnet:'].includes(url.protocol)) continue;
+    let filename = anchor.download || url.pathname.split('/').pop() || '';
+    try {
+      filename = decodeURIComponent(filename);
+    } catch (_) {
+      // Keep the encoded path when a page contains malformed percent escapes.
+    }
+    const extension = filename.includes('.') ? filename.split('.').pop().toLowerCase() : '';
+    if (extensions && !extensions.has(extension)) continue;
+    const source = url.href;
+    if (seen.has(source)) continue;
+    seen.add(source);
+    items.push({ source, filename: filename || undefined });
+    if (items.length === 200) break;
+  }
+  return items;
+}
+
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message.type !== 'scan-page') return;
+  sendResponse({
+    ok: true,
+    title: document.title,
+    pageUrl: location.href,
+    items: linksOnPage(message.filter),
+  });
+});

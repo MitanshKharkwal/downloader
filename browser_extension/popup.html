@@ -11,7 +11,9 @@
     .dot.ok { background: #2ea043; }
     .dot.bad { background: #d1242f; }
     input[type="text"] { width: 100%; box-sizing: border-box; padding: 6px; margin-bottom: 6px; }
-    button { width: 100%; padding: 6px; cursor: pointer; }
+    button, select { width: 100%; padding: 7px; cursor: pointer; box-sizing: border-box; }
+    .batch { margin-top: 12px; padding-top: 12px; border-top: 1px solid #ddd; }
+    .batch select { margin: 6px 0; }
     .muted { color: #666; font-size: 11px; margin-top: 8px; }
   </style>
 </head>
@@ -30,6 +32,18 @@
 
   <input type="text" id="manual-url" placeholder="Paste a URL or magnet link...">
   <button id="manual-add-btn">Send to Download Manager</button>
+
+  <div class="batch">
+    <strong>Download all from this page</strong>
+    <select id="batch-filter">
+      <option value="all">All links</option>
+      <option value="documents">Documents</option>
+      <option value="media">Media</option>
+      <option value="archives">Archives</option>
+      <option value="programs">Programs</option>
+    </select>
+    <button id="download-all-btn">Find and add links</button>
+  </div>
 
   <div class="muted" id="last-result"></div>
 

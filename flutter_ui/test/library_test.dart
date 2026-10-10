@@ -16,6 +16,7 @@ class FakeClient extends IpcClient {
     'download_dir': 'C:/Downloads',
     'max_concurrent_downloads': 3,
     'global_bandwidth_limit': 0,
+    'defender_scan_enabled': false,
     'category_dirs': <String, String>{},
   };
   @override
@@ -116,6 +117,39 @@ class TorrentDetailClient extends FakeClient {
   }
 }
 
+class SafetyDetailClient extends FakeClient {
+  @override
+  Future<dynamic> rpc(String method, [Map<String, dynamic>? args]) async {
+    if (method == 'task_details') {
+      return {
+        'task': {
+          'type': 'http',
+          'source': 'https://example.invalid/archive.zip',
+          'created_at': 0,
+          'num_connections': 4,
+          'supports_ranges': true,
+          'mirrors': [],
+          'description': '',
+          'health': {
+            'state': 'ready',
+            'acceleration': '4 connections',
+            'supports_ranges': true,
+            'effective_connections': 4,
+            'cookies_forwarded': true,
+          },
+          'safety': {
+            'status': 'safe',
+            'defender': 'clear',
+            'sha256': 'abc123',
+            'warnings': [],
+          },
+        },
+      };
+    }
+    return super.rpc(method, args);
+  }
+}
+
 void main() {
   test('server-denied download has an actionable error', () {
     final task = DownloadTask(
@@ -195,6 +229,34 @@ void main() {
     expect(client.calls, contains('update_settings'));
     expect(client.lastArgs!['max_concurrent_downloads'], 3);
     expect(client.lastArgs!['global_bandwidth_limit'], 0);
+    expect(client.lastArgs!['defender_scan_enabled'], false);
+    expect(tester.takeException(), isNull);
+  });
+  testWidgets('download details show health and safety evidence', (
+    tester,
+  ) async {
+    final task = DownloadTask(
+      id: 'safe',
+      title: 'archive.zip',
+      category: TaskCategory.compressed,
+      sizeBytes: 10,
+      progress: 1,
+      speedBytesPerSec: 0,
+      status: TaskStatus.completed,
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: libraryTheme(Brightness.light),
+        home: Scaffold(
+          body: DownloadDetails(client: SafetyDetailClient(), task: task),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Download health'), findsOneWidget);
+    expect(find.text('Safety'), findsOneWidget);
+    expect(find.text('abc123'), findsOneWidget);
+    expect(find.text('4 connections'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
   testWidgets('video audio-only selection sends its format to the backend', (

@@ -14,6 +14,7 @@ class AppConfig:
             "max_concurrent": 3,
             "max_bandwidth_kbps": 0,
             "run_on_startup": False,
+            "defender_scan_enabled": True,
         }
         self.load()
 
@@ -60,9 +61,7 @@ class AppConfig:
             import winreg
 
             key_path = r"Software\Microsoft\Windows\CurrentVersion\Run"
-            key = winreg.OpenKey(
-                winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_ALL_ACCESS
-            )
+            key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_ALL_ACCESS)
 
             run_on_startup = self.get("run_on_startup")
             app_name = "DownloadManager"

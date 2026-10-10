@@ -21,6 +21,7 @@ import threading
 import time
 from collections import deque
 from dataclasses import dataclass
+from urllib.parse import urlparse
 
 import requests
 
@@ -30,9 +31,7 @@ from .paths import safe_filename, unique_path
 
 DEFAULT_CHUNK = 256 * 1024  # bytes read per requests.iter_content() call
 SPEED_WINDOW_SECONDS = 5
-MAX_CONSECUTIVE_SEGMENT_FAILURES = (
-    6  # ~6 retries * 1.5s backoff before giving up loudly
-)
+MAX_CONSECUTIVE_SEGMENT_FAILURES = 6  # ~6 retries * 1.5s backoff before giving up loudly
 
 # requests' default User-Agent ("python-requests/X.X") gets blocked outright
 # by a lot of CDNs and file hosts as basic anti-bot/anti-hotlinking
@@ -114,10 +113,7 @@ class HttpDownload:
             self._controller_thread.start()
 
     def _join_controller(self) -> None:
-        if (
-            self._controller_thread
-            and self._controller_thread is not threading.current_thread()
-        ):
+        if self._controller_thread and self._controller_thread is not threading.current_thread():
             self._controller_thread.join()
 
     def pause(self) -> None:
@@ -226,6 +222,12 @@ class HttpDownload:
             if not self._requested_status:
                 self.task.status = DownloadStatus.ERROR
                 self.task.error_message = str(exc)
+                self.task.health.update(
+                    {
+                        "state": "failed",
+                        "failure_reason": self._health_failure_reason(exc),
+                    }
+                )
                 self.events.emit("status", self.task)
                 self.events.emit("error", self.task, exc)
         finally:
@@ -246,15 +248,27 @@ class HttpDownload:
             self._worker_error = exc
             self._cancel_event.set()
 
+    @staticmethod
+    def _health_failure_reason(exc: Exception) -> str:
+        response = getattr(exc, "response", None)
+        code = getattr(response, "status_code", None)
+        if code in (401, 403):
+            return "The server requires browser authentication, permission, or a valid referrer."
+        if code == 429:
+            return "The server is rate-limiting this download. Retry later or reduce connections."
+        if code:
+            return f"The server returned HTTP {code}."
+        if isinstance(exc, requests.Timeout):
+            return "The server did not respond before the connection timeout."
+        return str(exc)
+
     def _load_or_probe(self) -> bool:
         """Resume from a saved .dmpart.json if it matches, else probe fresh."""
         if os.path.exists(self._state_path) and os.path.exists(self._part_path):
             try:
                 with open(self._state_path) as f:
                     state = json.load(f)
-                part_size_ok = os.path.getsize(self._part_path) == state.get(
-                    "total_bytes"
-                )
+                part_size_ok = os.path.getsize(self._part_path) == state.get("total_bytes")
                 if (
                     state.get("source") == self.task.source
                     and part_size_ok
@@ -274,10 +288,7 @@ class HttpDownload:
                             if head_resp.status_code == 200:
                                 current_etag = head_resp.headers.get("ETag")
                                 current_lm = head_resp.headers.get("Last-Modified")
-                                if (
-                                    state.get("etag")
-                                    and state.get("etag") != current_etag
-                                ) or (
+                                if (state.get("etag") and state.get("etag") != current_etag) or (
                                     state.get("last_modified")
                                     and state.get("last_modified") != current_lm
                                 ):
@@ -291,9 +302,7 @@ class HttpDownload:
                             if (
                                 segment.start != cursor
                                 or segment.end < segment.start
-                                or not 0
-                                <= segment.downloaded
-                                <= segment.end - segment.start + 1
+                                or not 0 <= segment.downloaded <= segment.end - segment.start + 1
                             ):
                                 raise ValueError("Invalid saved segments")
                             cursor = segment.end + 1
@@ -301,12 +310,20 @@ class HttpDownload:
                             raise ValueError("Incomplete saved segment plan")
                         self._segments = segments
                         self.task.total_bytes = state["total_bytes"]
-                        self.task.downloaded_bytes = sum(
-                            s.downloaded for s in self._segments
-                        )
+                        self.task.downloaded_bytes = sum(s.downloaded for s in self._segments)
                         self.task.supports_ranges = state.get("supports_ranges", True)
                         self._etag = state.get("etag")
                         self._last_modified = state.get("last_modified")
+                        self.task.health.update(
+                            {
+                                "state": "ready",
+                                "resumed": True,
+                                "supports_ranges": True,
+                                "validator": "ETag" if self._etag else "Last-Modified",
+                                "effective_connections": self.num_connections,
+                                "acceleration": "Segmented resume is available.",
+                            }
+                        )
                         return True
             except (OSError, ValueError, KeyError, TypeError):
                 pass  # corrupt sidecar, fall through to a fresh probe
@@ -342,6 +359,28 @@ class HttpDownload:
                         raise RuntimeError("Invalid range response during probe")
                     self._etag = resp.headers.get("ETag")
                     self._last_modified = resp.headers.get("Last-Modified")
+                    self.task.health.update(
+                        {
+                            "state": "ready",
+                            "response_status": resp.status_code,
+                            "final_host": urlparse(getattr(resp, "url", source)).hostname
+                            or "",
+                            "supports_ranges": accepts_ranges,
+                            "content_type": resp.headers.get("Content-Type", "")
+                            .split(";", 1)[0]
+                            .strip(),
+                            "content_encoding": resp.headers.get("Content-Encoding", "identity"),
+                            "validator": "ETag"
+                            if self._etag
+                            else "Last-Modified"
+                            if self._last_modified
+                            else "None",
+                            "effective_connections": self.num_connections if accepts_ranges else 1,
+                            "acceleration": "Parallel segmented download is available."
+                            if accepts_ranges
+                            else "The server does not support byte ranges, so one connection is used.",
+                        }
+                    )
 
                     if not getattr(self.task, "filename_is_explicit", False):
                         new_name = None
@@ -349,9 +388,7 @@ class HttpDownload:
                         if cd:
                             import urllib.parse
 
-                            m = re.search(
-                                r"filename\*=UTF-8''([^; ]+)", cd, re.IGNORECASE
-                            )
+                            m = re.search(r"filename\*=UTF-8''([^; ]+)", cd, re.IGNORECASE)
                             if m:
                                 new_name = urllib.parse.unquote(m.group(1))
                             else:
@@ -361,27 +398,16 @@ class HttpDownload:
                                 if m:
                                     new_name = m.group(1)
 
-                        if (
-                            not new_name
-                            and not os.path.splitext(self.task.dest_path)[1]
-                        ):
-                            ct = (
-                                resp.headers.get("Content-Type", "")
-                                .split(";")[0]
-                                .strip()
-                            )
+                        if not new_name and not os.path.splitext(self.task.dest_path)[1]:
+                            ct = resp.headers.get("Content-Type", "").split(";")[0].strip()
                             if ct:
                                 ext = mimetypes.guess_extension(ct)
                                 if ext:
                                     if ext == ".htm":
                                         ext = ".html"
-                                    new_name = (
-                                        os.path.basename(self.task.dest_path) + ext
-                                    )
+                                    new_name = os.path.basename(self.task.dest_path) + ext
 
-                        if new_name and new_name != os.path.basename(
-                            self.task.dest_path
-                        ):
+                        if new_name and new_name != os.path.basename(self.task.dest_path):
                             new_name = safe_filename(new_name)
                             if self.reserve_filename:
                                 self.reserve_filename(self.task, new_name)
@@ -409,11 +435,7 @@ class HttpDownload:
             self.task.supports_ranges = False
             self.task.total_bytes = total
             self.task.downloaded_bytes = 0
-            segment_end = (
-                sys.maxsize
-                if (total <= 0 and not accepts_ranges)
-                else max(total - 1, 0)
-            )
+            segment_end = sys.maxsize if (total <= 0 and not accepts_ranges) else max(total - 1, 0)
             self._segments = [_Segment(0, segment_end)]
             self.num_connections = 1
             return True
@@ -447,11 +469,7 @@ class HttpDownload:
             required = max(
                 0,
                 self.task.total_bytes
-                - (
-                    os.path.getsize(self._part_path)
-                    if os.path.exists(self._part_path)
-                    else 0
-                ),
+                - (os.path.getsize(self._part_path) if os.path.exists(self._part_path) else 0),
             )
             if free_space < required:
                 raise RuntimeError(
@@ -470,9 +488,7 @@ class HttpDownload:
                     f.truncate(self.task.total_bytes)
         except OSError as e:
             if getattr(e, "errno", None) == 28:
-                raise RuntimeError(
-                    "Out of disk space (ENOSPC) during file allocation."
-                ) from e
+                raise RuntimeError("Out of disk space (ENOSPC) during file allocation.") from e
             raise
 
     def _download_segment(self, seg: _Segment) -> None:
@@ -490,9 +506,7 @@ class HttpDownload:
                         self.task.downloaded_bytes -= seg.downloaded
                         seg.downloaded = 0
                     output.seek(0)
-                    output.truncate(
-                        self.task.total_bytes if not self._unknown_size else 0
-                    )
+                    output.truncate(self.task.total_bytes if not self._unknown_size else 0)
                 start = seg.remaining_start
                 if self.task.supports_ranges:
                     headers["Range"] = f"bytes={start}-{seg.end}"
@@ -508,9 +522,7 @@ class HttpDownload:
                     ) as response:
                         response.raise_for_status()
                         if self.task.supports_ranges:
-                            expected = (
-                                f"bytes {start}-{seg.end}/{self.task.total_bytes}"
-                            )
+                            expected = f"bytes {start}-{seg.end}/{self.task.total_bytes}"
                             if (
                                 response.status_code != 206
                                 or response.headers.get("Content-Range") != expected
@@ -520,8 +532,7 @@ class HttpDownload:
                                 )
                             if (
                                 self._etag
-                                and response.headers.get("ETag", self._etag)
-                                != self._etag
+                                and response.headers.get("ETag", self._etag) != self._etag
                             ):
                                 raise RuntimeError("Resource changed during download")
                         elif response.status_code != 200:
@@ -543,13 +554,9 @@ class HttpDownload:
                                 not self._unknown_size
                                 and len(chunk) > seg.end - seg.remaining_start + 1
                             ):
-                                raise RuntimeError(
-                                    "Response exceeds requested byte range"
-                                )
+                                raise RuntimeError("Response exceeds requested byte range")
                             if self.rate_limiter:
-                                self.rate_limiter.consume(
-                                    len(chunk), self._cancel_event
-                                )
+                                self.rate_limiter.consume(len(chunk), self._cancel_event)
                             if self._cancel_event.is_set():
                                 return
                             output.write(chunk)
@@ -569,9 +576,7 @@ class HttpDownload:
                         return
                     failures += 1
                     if failures >= MAX_CONSECUTIVE_SEGMENT_FAILURES * len(sources):
-                        raise RuntimeError(
-                            f"gave up after {failures} attempts: {exc}"
-                        ) from exc
+                        raise RuntimeError(f"gave up after {failures} attempts: {exc}") from exc
                     self.task.error_message = f"Retrying: {exc}"
                     self._cancel_event.wait(0.5)
 
@@ -583,17 +588,12 @@ class HttpDownload:
         ):
             now = time.time()
             self._speed_samples.append((now, self.task.downloaded_bytes))
-            while (
-                self._speed_samples
-                and now - self._speed_samples[0][0] > SPEED_WINDOW_SECONDS
-            ):
+            while self._speed_samples and now - self._speed_samples[0][0] > SPEED_WINDOW_SECONDS:
                 self._speed_samples.popleft()
             if len(self._speed_samples) >= 2:
                 t0, b0 = self._speed_samples[0]
                 dt = now - t0
-                self.task.speed_bps = (
-                    (self.task.downloaded_bytes - b0) / dt if dt > 0 else 0.0
-                )
+                self.task.speed_bps = (self.task.downloaded_bytes - b0) / dt if dt > 0 else 0.0
             if self.task.status == DownloadStatus.COMPLETED:
                 break
             self._cancel_event.wait(0.5)
@@ -606,8 +606,7 @@ class HttpDownload:
             "etag": self._etag,
             "last_modified": self._last_modified,
             "segments": [
-                {"start": s.start, "end": s.end, "downloaded": s.downloaded}
-                for s in self._segments
+                {"start": s.start, "end": s.end, "downloaded": s.downloaded} for s in self._segments
             ],
         }
         tmp_file = self._state_path + ".tmp"

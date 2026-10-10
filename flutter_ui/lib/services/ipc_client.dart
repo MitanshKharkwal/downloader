@@ -30,6 +30,10 @@ class IpcClient {
     await _loadToken();
     if (_token == null) throw Exception("IPC Token not found");
 
+    final timeout = method == 'download_update'
+        ? const Duration(minutes: 10)
+        : const Duration(seconds: 45);
+
     final response = await http
         .post(
           Uri.parse(_url),
@@ -39,7 +43,7 @@ class IpcClient {
           },
           body: jsonEncode({'method': method, 'args': args ?? {}}),
         )
-        .timeout(const Duration(seconds: 45));
+        .timeout(timeout);
 
     if (response.statusCode == 401) _token = null;
     if (response.statusCode != 200) {

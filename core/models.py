@@ -70,6 +70,10 @@ class DownloadTask:
     created_at: float = field(default_factory=time.time)
     completed_at: float | None = None
     was_paused_for_urgent: bool = False
+    health: dict[str, object] = field(default_factory=dict)
+    safety: dict[str, object] = field(
+        default_factory=lambda: {"status": "pending", "sha256": "", "warnings": []}
+    )
 
     def progress(self) -> float:
         if self.total_bytes <= 0:

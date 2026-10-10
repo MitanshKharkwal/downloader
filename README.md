@@ -11,13 +11,16 @@ A desktop download manager with a polished Flutter UI, a Python engine, and a Ch
 | **Video downloads** | YouTube and 1000+ sites via yt-dlp |
 | **Smart organisation** | Auto-categorisation by file type, auto-extraction of archives |
 | **Bandwidth control** | Global cap, time-of-day scheduling, per-task priority |
-| **Browser integration** | Chrome extension captures download links and magnet clicks |
+| **Browser integration** | Chrome extension captures downloads, magnet links, or up to 200 filtered links from a page |
+| **Download health** | Shows server status, range/resume support, connection count, and browser-session handoff state |
+| **Safety checks** | Records SHA-256, flags suspicious filenames and signatures, and can scan with Windows Defender |
+| **Verified updates** | Checks GitHub releases and accepts only checksum-matched, trusted-publisher installers |
 | **Flutter UI** | Glass-skin desktop app — dark, animated, responsive |
 
 ## Architecture
 
 ```
-Chrome extension  →  native_host/host.py  →  POST /add
+Chrome extension  →  native_host/host.py  →  POST /add or /batch_add
                                                     ↓
 Flutter UI        →  POST /rpc (JSON-RPC)  →  daemon.py (Python)
                                                     ↓
@@ -25,6 +28,8 @@ Flutter UI        →  POST /rpc (JSON-RPC)  →  daemon.py (Python)
 ```
 
 The daemon is a single headless Python process that owns all download state. Both clients (browser extension and Flutter UI) communicate over localhost-only, token-authenticated HTTP.
+
+Completed downloads expose their safety report and download health in **Download details**. Windows Defender scanning can be disabled in Settings; SHA-256 fingerprinting and filename warnings remain available. The Updates screen checks the repository's latest stable release and will not install an unsigned package or one whose checksum differs from `SHA256SUMS.txt`.
 
 ## Quickstart
 

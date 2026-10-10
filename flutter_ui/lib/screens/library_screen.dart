@@ -32,6 +32,8 @@ class _LibraryScreenState extends State<LibraryScreen> {
   bool? serviceCompatible;
   final Set<String> pending = {};
   Timer? timer;
+  Timer? updateTimer;
+  String? availableUpdate;
   int failures = 0;
   DateTime retryAt = DateTime(2000);
 
@@ -40,13 +42,32 @@ class _LibraryScreenState extends State<LibraryScreen> {
     super.initState();
     refresh();
     timer = Timer.periodic(const Duration(seconds: 1), (_) => refresh());
+    updateTimer = Timer(const Duration(seconds: 5), checkUpdates);
   }
 
   @override
   void dispose() {
     timer?.cancel();
+    updateTimer?.cancel();
     search.dispose();
     super.dispose();
+  }
+
+  Future<void> checkUpdates() async {
+    if (serviceCompatible == false) return;
+    try {
+      final response = await client.rpc('check_for_updates');
+      final update = Map<String, dynamic>.from(response['update'] ?? {});
+      if (mounted) {
+        setState(() {
+          availableUpdate = update['available'] == true
+              ? update['version']?.toString()
+              : null;
+        });
+      }
+    } catch (_) {
+      // Update checks are silent; the Updates dialog shows actionable errors.
+    }
   }
 
   Future<void> refresh({bool force = false}) async {
@@ -710,6 +731,39 @@ class _LibraryScreenState extends State<LibraryScreen> {
                       if (!narrow) ...[
                         const SizedBox(width: 12),
                         const Text('Settings'),
+                      ],
+                    ],
+                  ),
+                ),
+                TextButton(
+                  onPressed: serviceCompatible == false
+                      ? null
+                      : () async {
+                          await showDialog<void>(
+                            context: context,
+                            builder: (_) => UpdateDialog(client: client),
+                          );
+                          await checkUpdates();
+                        },
+                  child: Row(
+                    mainAxisAlignment: narrow
+                        ? MainAxisAlignment.center
+                        : MainAxisAlignment.start,
+                    children: [
+                      Badge(
+                        isLabelVisible: availableUpdate != null,
+                        child: const Icon(
+                          Icons.system_update_alt_rounded,
+                          size: 20,
+                        ),
+                      ),
+                      if (!narrow) ...[
+                        const SizedBox(width: 12),
+                        Text(
+                          availableUpdate == null
+                              ? 'Updates'
+                              : 'Update $availableUpdate',
+                        ),
                       ],
                     ],
                   ),

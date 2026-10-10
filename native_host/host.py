@@ -191,6 +191,38 @@ def post_to_app(
     }
 
 
+def post_batch_to_app(items: list[dict]) -> dict:
+    if not isinstance(items, list) or not 1 <= len(items) <= 200:
+        return {"ok": False, "error": "batch must contain between 1 and 200 links"}
+    token = _read_token()
+    if token is None:
+        _try_launch_app()
+        for _ in range(20):
+            time.sleep(0.5)
+            token = _read_token()
+            if token:
+                break
+    if token is None:
+        return {"ok": False, "error": "desktop app has not created an IPC token yet"}
+    payload = json.dumps({"items": items}).encode()
+    try:
+        request = urllib.request.Request(
+            f"http://127.0.0.1:{IPC_PORT}/batch_add",
+            data=payload,
+            headers={"X-Auth-Token": token, "Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(request, timeout=30) as response:
+            return json.loads(response.read())
+    except urllib.error.HTTPError as exc:
+        try:
+            return json.loads(exc.read())
+        except (ValueError, OSError):
+            return {"ok": False, "error": f"HTTP {exc.code}: {exc.reason}"}
+    except (urllib.error.URLError, ConnectionRefusedError, TimeoutError):
+        return {"ok": False, "error": "desktop app is not reachable"}
+
+
 def handle(message: dict) -> dict:
     action = message.get("action")
 
@@ -207,6 +239,9 @@ def handle(message: dict) -> dict:
             headers=message.get("headers"),
             verify=message.get("verify") is True,
         )
+
+    if action == "batch_add":
+        return post_batch_to_app(message.get("items"))
 
     return {"ok": False, "error": f"unknown action: {action!r}"}
 

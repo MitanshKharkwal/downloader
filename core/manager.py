@@ -24,6 +24,7 @@ from .events import EventEmitter
 from .http_downloader import HttpDownload
 from .models import DownloadStatus, DownloadTask, DownloadType, Priority
 from .paths import cleanup_task_files, safe_filename, unique_path
+from .safety import inspect_download
 from .torrent_engine import TorrentDownload, TorrentSession
 
 _MAGNET_RE = re.compile(r"^magnet:\?", re.IGNORECASE)
@@ -126,6 +127,7 @@ class DownloadManager:
             "scheduler_end_hour": 6,
             "pause_on_metered": False,
             "auto_extract": True,
+            "defender_scan_enabled": True,
             "category_dirs": {},
         }
 
@@ -146,13 +148,12 @@ class DownloadManager:
         self._suspend_starts = False
         self._urgent_task_id: str | None = None
         self._paused_for_urgent_task_ids: set[str] = set()
+        self._safety_scans: set[str] = set()
 
         self.events.on("status", self._on_task_status_changed)
         self._load_state()
 
-        self._scheduler_thread = threading.Thread(
-            target=self._run_scheduler, daemon=True
-        )
+        self._scheduler_thread = threading.Thread(target=self._run_scheduler, daemon=True)
         self._scheduler_thread.start()
 
     # -- public API --------------------------------------------------------
@@ -194,15 +195,10 @@ class DownloadManager:
                 or (parsed.scheme in ("http", "https") and parsed.netloc)
                 or (source.lower().endswith(".torrent") and os.path.isfile(source))
             ):
-                raise ValueError(
-                    "Source must be an HTTP(S) URL, magnet, or existing torrent file"
-                )
+                raise ValueError("Source must be an HTTP(S) URL, magnet, or existing torrent file")
             if headers is not None and (
                 not isinstance(headers, dict)
-                or not all(
-                    isinstance(k, str) and isinstance(v, str)
-                    for k, v in headers.items()
-                )
+                or not all(isinstance(k, str) and isinstance(v, str) for k, v in headers.items())
             ):
                 raise ValueError("Headers must contain text keys and values")
             if mirrors is not None and (
@@ -220,9 +216,7 @@ class DownloadManager:
                 or any(type(p) is not int or not 0 <= p <= 7 for p in file_priorities)
             ):
                 raise ValueError("File priorities must be integers from 0 to 7")
-            return self._add(
-                source, dest_dir, filename, headers, mirrors, file_priorities
-            )
+            return self._add(source, dest_dir, filename, headers, mirrors, file_priorities)
 
     def reserve_filename(self, task: DownloadTask, name: str) -> str:
         with self._lock:
@@ -235,9 +229,7 @@ class DownloadManager:
             )
             return task.dest_path
 
-    def add_video(
-        self, url: str, format_id="best", filename="video.mp4"
-    ) -> DownloadTask:
+    def add_video(self, url: str, format_id="best", filename="video.mp4") -> DownloadTask:
         if (
             not isinstance(url, str)
             or urlparse(url).scheme not in ("http", "https")
@@ -247,9 +239,9 @@ class DownloadManager:
         if format_id not in ("best", "worst", "bestaudio"):
             raise ValueError("Unsupported video format")
         with self._operations, self._lock:
-            directory = self._config.get("category_dirs", {}).get(
-                "Video"
-            ) or os.path.join(self.download_dir, "Video")
+            directory = self._config.get("category_dirs", {}).get("Video") or os.path.join(
+                self.download_dir, "Video"
+            )
             os.makedirs(directory, exist_ok=True)
             task = DownloadTask(
                 source=f"ytdlp||{format_id}||{url}",
@@ -297,9 +289,7 @@ class DownloadManager:
                     tempfile.gettempdir(), f"download_{digest}.torrent"
                 )
 
-        is_torrent = bool(_MAGNET_RE.match(source)) or source.lower().endswith(
-            ".torrent"
-        )
+        is_torrent = bool(_MAGNET_RE.match(source)) or source.lower().endswith(".torrent")
         intended_dir = dest_dir
         intended_base = ""
         intended_ext = ""
@@ -371,29 +361,23 @@ class DownloadManager:
                                 dest_dir
                                 if explicit_destination
                                 else (
-                                    self._config.get("category_dirs", {}).get(
-                                        "Torrents"
-                                    )
+                                    self._config.get("category_dirs", {}).get("Torrents")
                                     or dest_dir
                                 )
                             ):
                                 return task
                         else:
-                            if os.path.dirname(
-                                os.path.abspath(task.dest_path)
-                            ) == os.path.abspath(intended_dir):
+                            if os.path.dirname(os.path.abspath(task.dest_path)) == os.path.abspath(
+                                intended_dir
+                            ):
                                 task_base, task_ext = os.path.splitext(
                                     os.path.basename(task.dest_path)
                                 )
-                                if task_ext == intended_ext and task_base.startswith(
-                                    intended_base
-                                ):
+                                if task_ext == intended_ext and task_base.startswith(intended_base):
                                     return task
 
         category_dirs = self.get_config().get("category_dirs", {})
-        torrent_dir = (
-            dest_dir if explicit_destination else category_dirs.get("Torrents")
-        )
+        torrent_dir = dest_dir if explicit_destination else category_dirs.get("Torrents")
         if not torrent_dir:
             torrent_dir = dest_dir
 
@@ -431,6 +415,18 @@ class DownloadManager:
                 headers=headers or {},
                 category=category,
                 filename_is_explicit=filename_is_explicit,
+                health={
+                    "state": "waiting",
+                    "requested_connections": self.max_connections_per_download,
+                    "authentication_forwarded": any(
+                        key.lower() in ("authorization", "cookie") for key in (headers or {})
+                    ),
+                    "cookies_forwarded": any(key.lower() == "cookie" for key in (headers or {})),
+                    "referrer_forwarded": any(
+                        key.lower() in ("referer", "referrer") for key in (headers or {})
+                    ),
+                },
+                safety={"status": "pending", "sha256": "", "warnings": []},
             )
 
         task.mirrors = mirrors or []
@@ -450,6 +446,31 @@ class DownloadManager:
         self.events.emit("added", task)
         self._maybe_start_next()
         return task
+
+    def add_batch(self, items: list[dict]) -> dict[str, int]:
+        if not isinstance(items, list) or not 1 <= len(items) <= 200:
+            raise ValueError("Batch must contain between 1 and 200 links")
+        added = skipped = failed = 0
+        for item in items:
+            try:
+                if not isinstance(item, dict):
+                    raise ValueError("Each batch item must be an object")
+                source = item.get("source")
+                if not isinstance(source, str) or not source.strip():
+                    raise ValueError("Each batch item needs a source URL")
+                before = {task.id for task in self.list_tasks()}
+                task = self.add(
+                    source,
+                    filename=item.get("filename"),
+                    headers=item.get("headers"),
+                )
+                if task.id in before:
+                    skipped += 1
+                else:
+                    added += 1
+            except (ValueError, TypeError, OSError):
+                failed += 1
+        return {"added": added, "skipped": skipped, "failed": failed}
 
     def pause(self, task_id: str, *, policy: bool = False) -> None:
         with self._operations:
@@ -680,9 +701,7 @@ class DownloadManager:
         torrents = any(t.type == DownloadType.TORRENT for t in active)
         streams = any(t.type != DownloadType.TORRENT for t in active)
         torrent_limit = max(1, limit // 2) if limit and torrents and streams else limit
-        stream_limit = (
-            max(1, limit - torrent_limit) if limit and torrents and streams else limit
-        )
+        stream_limit = max(1, limit - torrent_limit) if limit and torrents and streams else limit
         if self.rate_limiter.rate != stream_limit:
             self.rate_limiter.rate = stream_limit
         self._torrent_session.set_download_rate_limit(torrent_limit)
@@ -704,16 +723,17 @@ class DownloadManager:
                 "scheduler_end_hour",
             ):
                 maximum = (
-                    100
-                    if key == "max_concurrent_downloads"
-                    else 23
-                    if "hour" in key
-                    else 10**12
+                    100 if key == "max_concurrent_downloads" else 23 if "hour" in key else 10**12
                 )
                 minimum = 1 if key == "max_concurrent_downloads" else 0
                 if type(value) is not int or not minimum <= value <= maximum:
                     raise ValueError(f"Invalid {key}")
-            elif key in ("scheduler_enabled", "pause_on_metered", "auto_extract"):
+            elif key in (
+                "scheduler_enabled",
+                "pause_on_metered",
+                "auto_extract",
+                "defender_scan_enabled",
+            ):
                 if type(value) is not bool:
                     raise ValueError(f"Invalid {key}")
             elif key == "download_dir":
@@ -744,8 +764,7 @@ class DownloadManager:
                 {
                     **config,
                     "max_concurrent": self.max_concurrent_downloads,
-                    "max_bandwidth_kbps": self._config["global_bandwidth_limit"]
-                    // 1024,
+                    "max_bandwidth_kbps": self._config["global_bandwidth_limit"] // 1024,
                 }
             )
 
@@ -831,10 +850,7 @@ class DownloadManager:
                             t
                             for t in self._tasks.values()
                             if t.status == DownloadStatus.QUEUED
-                            and (
-                                self._urgent_task_id is None
-                                or t.id == self._urgent_task_id
-                            )
+                            and (self._urgent_task_id is None or t.id == self._urgent_task_id)
                         ),
                         key=lambda t: (-t.priority.value, t.created_at),
                     )
@@ -869,9 +885,7 @@ class DownloadManager:
                             rate_limiter=PriorityRateLimiter(task, self.rate_limiter),
                         )
                     else:
-                        engine = TorrentDownload(
-                            task, self.events, self._torrent_session
-                        )
+                        engine = TorrentDownload(task, self.events, self._torrent_session)
                     self._engines[task.id] = engine
                 self._rebalance_bandwidth()
                 engine.start()
@@ -887,6 +901,7 @@ class DownloadManager:
             DownloadStatus.CANCELED,
         ):
             if task.status == DownloadStatus.COMPLETED:
+                self._start_safety_scan(task)
                 config = self.get_config()
                 if config.get("auto_extract", True):
                     ext = os.path.splitext(task.dest_path)[1].lower()
@@ -905,9 +920,7 @@ class DownloadManager:
                                 # Check if it created a single top-level folder
                                 extracted_items = os.listdir(extract_dir)
                                 if len(extracted_items) == 1:
-                                    single_item = os.path.join(
-                                        extract_dir, extracted_items[0]
-                                    )
+                                    single_item = os.path.join(extract_dir, extracted_items[0])
                                     if os.path.isdir(single_item):
                                         # Move everything up one level
                                         for item in os.listdir(single_item):
@@ -951,6 +964,43 @@ class DownloadManager:
                 for tid in self._paused_for_urgent_task_ids:
                     self._policy_paused.add(tid)
                 self._paused_for_urgent_task_ids.clear()
+
+    def _start_safety_scan(self, task: DownloadTask, *, force: bool = False) -> None:
+        with self._lock:
+            current = str(task.safety.get("status", "pending"))
+            if task.id in self._safety_scans or (
+                not force and current not in ("", "pending", "error")
+            ):
+                return
+            self._safety_scans.add(task.id)
+            task.safety = {"status": "checking", "sha256": "", "warnings": []}
+
+        def scan() -> None:
+            try:
+                task.safety = inspect_download(
+                    task.dest_path,
+                    bool(self.get_config().get("defender_scan_enabled", True)),
+                )
+            except (OSError, ValueError) as exc:
+                task.safety = {
+                    "status": "error",
+                    "sha256": "",
+                    "warnings": [f"Safety scan failed: {exc}"],
+                    "defender": "error",
+                }
+            finally:
+                with self._lock:
+                    self._safety_scans.discard(task.id)
+                self._save_state()
+                self.events.emit("safety", task)
+
+        threading.Thread(target=scan, daemon=True).start()
+
+    def rescan_task(self, task_id: str) -> None:
+        task = self.get(task_id)
+        if not task or task.status != DownloadStatus.COMPLETED:
+            raise ValueError("Only completed downloads can be scanned")
+        self._start_safety_scan(task, force=True)
 
     # -- helpers -------------------------------------------------------------
 
@@ -1028,9 +1078,7 @@ class DownloadManager:
                 self.max_concurrent_downloads = config["max_concurrent_downloads"]
             if "global_bandwidth_limit" in config:
                 self.rate_limiter.rate = config["global_bandwidth_limit"]
-                self._torrent_session.set_download_rate_limit(
-                    config["global_bandwidth_limit"]
-                )
+                self._torrent_session.set_download_rate_limit(config["global_bandwidth_limit"])
             task_list = manifest.get("tasks", [])
         else:
             task_list = manifest  # Legacy state file format
@@ -1046,9 +1094,7 @@ class DownloadManager:
                     if len(ext) > 20:
                         ext = ""
                     new_name = base[: 150 - len(ext)] + ext
-                    task.dest_path = os.path.join(
-                        os.path.dirname(task.dest_path), new_name
-                    )
+                    task.dest_path = os.path.join(os.path.dirname(task.dest_path), new_name)
 
             except Exception as e:
                 import traceback
@@ -1068,9 +1114,7 @@ class DownloadManager:
                 raise ValueError("Download no longer exists")
             result = {k: v for k, v in task.to_dict().items() if k != "headers"}
             engine = self._engines.get(task_id)
-            result["files"] = (
-                engine.list_files() if isinstance(engine, TorrentDownload) else []
-            )
+            result["files"] = engine.list_files() if isinstance(engine, TorrentDownload) else []
             return result
 
     def set_file_priorities(self, task_id: str, priorities: list[int]) -> None:
@@ -1087,13 +1131,10 @@ class DownloadManager:
                 raise ValueError("Select at least one file; priorities must be 0 to 7")
             engine = self._engines.get(task_id)
             if not isinstance(engine, TorrentDownload):
-                raise ValueError(
-                    "Torrent metadata unavailable; resume the download first"
-                )
+                raise ValueError("Torrent metadata unavailable; resume the download first")
             files = engine.list_files()
             if len(files) != len(priorities) or not any(
-                priority > 0 and not file["pad"]
-                for priority, file in zip(priorities, files)
+                priority > 0 and not file["pad"] for priority, file in zip(priorities, files)
             ):
                 raise ValueError("Select at least one downloadable file")
             engine.set_file_priorities(priorities)

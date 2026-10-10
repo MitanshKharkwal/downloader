@@ -26,7 +26,7 @@ async function getHeadersForUrl(url, referrer) {
   }
   try {
     const cookies = await chrome.cookies.getAll({ url });
-    const cookieHeader = cookies.map((c) => `${c.name}=${c.value}`).join('; ');
+    const cookieHeader = cookies.map((c) => `${c.name}=${c.value}`).join('; ').slice(0, 4096);
     if (cookieHeader) {
       headers['Cookie'] = cookieHeader;
     }
@@ -37,12 +37,31 @@ async function getHeadersForUrl(url, referrer) {
   }
 }
 
+async function sendBatch(rawItems, pageUrl) {
+  const candidates = Array.isArray(rawItems) ? rawItems.slice(0, 200) : [];
+  const items = await Promise.all(candidates.map(async (item) => ({
+    source: item.source,
+    filename: item.filename,
+    headers: await getHeadersForUrl(item.source, pageUrl),
+  })));
+  const result = await sendToNativeHost({ action: "batch_add", items });
+  await chrome.storage.local.set({
+    lastResult: { ...result, source: `${candidates.length} page links`, at: Date.now() },
+  });
+  return result;
+}
+
 chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.removeAll(() => {
     chrome.contextMenus.create({
       id: "send-to-dm",
       title: "Send link to Download Manager",
       contexts: ["link"],
+    });
+    chrome.contextMenus.create({
+      id: "download-all-dm",
+      title: "Download all links on this page",
+      contexts: ["page"],
     });
   });
 });
@@ -99,11 +118,23 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     });
     return true;
   }
+  if (msg.type === "batch-add") {
+    sendBatch(msg.items, msg.pageUrl).then(sendResponse);
+    return true;
+  }
 });
 
-chrome.contextMenus.onClicked.addListener(async (info) => {
-  if (info.menuItemId !== "send-to-dm" || !info.linkUrl) return;
-  const headers = await getHeadersForUrl(info.linkUrl, info.pageUrl);
-  const result = await sendToNativeHost({ action: "add", source: info.linkUrl, headers, verify: true });
-  chrome.storage.local.set({ lastResult: { ...result, source: info.linkUrl, at: Date.now() } });
+chrome.contextMenus.onClicked.addListener(async (info, tab) => {
+  if (info.menuItemId === "send-to-dm" && info.linkUrl) {
+    const headers = await getHeadersForUrl(info.linkUrl, info.pageUrl);
+    const result = await sendToNativeHost({ action: "add", source: info.linkUrl, headers, verify: true });
+    chrome.storage.local.set({ lastResult: { ...result, source: info.linkUrl, at: Date.now() } });
+    return;
+  }
+  if (info.menuItemId === "download-all-dm" && tab?.id) {
+    chrome.tabs.sendMessage(tab.id, { type: "scan-page", filter: "all" }, (scan) => {
+      if (chrome.runtime.lastError || !scan?.ok) return;
+      sendBatch(scan.items, scan.pageUrl);
+    });
+  }
 });

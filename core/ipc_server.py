@@ -28,6 +28,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import TYPE_CHECKING
 
 from core.models import Priority
+from core.updater import check_for_update, download_update, install_update
+from core.version import APP_VERSION
 
 if TYPE_CHECKING:
     from core.manager import DownloadManager
@@ -84,9 +86,7 @@ def _make_handler(manager: DownloadManager, token: str):
                     return
                 self.connection.settimeout(10)
                 body = json.loads(self.rfile.read(length) or b"{}")
-                if not isinstance(body, dict) or not isinstance(
-                    body.get("args", {}), dict
-                ):
+                if not isinstance(body, dict) or not isinstance(body.get("args", {}), dict):
                     raise ValueError("Expected an object")
             except (json.JSONDecodeError, ValueError, TimeoutError):
                 self._send_json(400, {"ok": False, "error": "invalid JSON"})
@@ -106,15 +106,10 @@ def _make_handler(manager: DownloadManager, token: str):
                 try:
                     filename = body.get("filename")
                     headers = body.get("headers")
-                    result = manager.add(
-                        body["source"], filename=filename, headers=headers
-                    )
+                    result = manager.add(body["source"], filename=filename, headers=headers)
                     if body.get("verify") is True:
                         deadline = time.monotonic() + 8
-                        while (
-                            result.status.value == "connecting"
-                            and time.monotonic() < deadline
-                        ):
+                        while result.status.value == "connecting" and time.monotonic() < deadline:
                             time.sleep(0.05)
                         if result.status.value == "error":
                             error = result.error_message or "The source rejected the request"
@@ -127,10 +122,18 @@ def _make_handler(manager: DownloadManager, token: str):
                                 },
                             )
                             return
-                    public = {
-                        k: v for k, v in result.to_dict().items() if k != "headers"
-                    }
+                    public = {k: v for k, v in result.to_dict().items() if k != "headers"}
                     self._send_json(200, {"ok": True, **public})
+                except (ValueError, TypeError, KeyError) as exc:
+                    self._send_json(400, {"ok": False, "error": str(exc)})
+                except Exception as exc:
+                    self._send_json(500, {"ok": False, "error": str(exc)})
+                return
+
+            if self.path == "/batch_add":
+                try:
+                    result = manager.add_batch(body.get("items"))
+                    self._send_json(200, {"ok": True, **result})
                 except (ValueError, TypeError, KeyError) as exc:
                     self._send_json(400, {"ok": False, "error": str(exc)})
                 except Exception as exc:
@@ -144,7 +147,20 @@ def _make_handler(manager: DownloadManager, token: str):
 
                 try:
                     if method == "get_capabilities":
-                        self._send_json(200, {"ok": True, "protocol": 2})
+                        self._send_json(
+                            200,
+                            {
+                                "ok": True,
+                                "protocol": 2,
+                                "version": APP_VERSION,
+                                "features": [
+                                    "download_health",
+                                    "download_all",
+                                    "safety_scan",
+                                    "signed_updates",
+                                ],
+                            },
+                        )
                     elif method == "list_tasks":
                         tasks = []
                         for task in manager.list_tasks():
@@ -180,6 +196,18 @@ def _make_handler(manager: DownloadManager, token: str):
                             200,
                             {"ok": True, "task": manager.task_details(args["task_id"])},
                         )
+                    elif method == "rescan_task":
+                        manager.rescan_task(args["task_id"])
+                        self._send_json(200, {"ok": True})
+                    elif method == "check_for_updates":
+                        self._send_json(200, {"ok": True, "update": check_for_update()})
+                    elif method == "download_update":
+                        update = check_for_update()
+                        package = download_update(update)
+                        self._send_json(200, {"ok": True, "package": package})
+                    elif method == "install_update":
+                        install_update(args["path"])
+                        self._send_json(200, {"ok": True})
                     elif method == "set_file_priorities":
                         manager.set_file_priorities(args["task_id"], args["priorities"])
                         self._send_json(200, {"ok": True})
@@ -191,9 +219,7 @@ def _make_handler(manager: DownloadManager, token: str):
                             "connecting",
                             "downloading",
                         ):
-                            raise ValueError(
-                                "Only pending downloads can be made urgent"
-                            )
+                            raise ValueError("Only pending downloads can be made urgent")
                         manager.set_urgent(task.id)
                         self._send_json(200, {"ok": True})
                     elif method == "export_queue":
@@ -302,9 +328,7 @@ def _make_handler(manager: DownloadManager, token: str):
 
                         threading.Timer(0.5, lambda: __import__("os")._exit(0)).start()
                     elif method == "get_config":
-                        self._send_json(
-                            200, {"ok": True, "config": manager.get_config()}
-                        )
+                        self._send_json(200, {"ok": True, "config": manager.get_config()})
                     elif method == "set_config":
                         manager.set_config(args.get("config", {}))
                         self._send_json(200, {"ok": True})
@@ -315,9 +339,7 @@ def _make_handler(manager: DownloadManager, token: str):
                                 {"ok": True, "settings": manager.app_config.settings},
                             )
                         else:
-                            self._send_json(
-                                500, {"ok": False, "error": "No config available"}
-                            )
+                            self._send_json(500, {"ok": False, "error": "No config available"})
 
                     elif method == "update_settings":
                         if hasattr(manager, "app_config"):
@@ -330,9 +352,7 @@ def _make_handler(manager: DownloadManager, token: str):
                                 if k in manager.get_config() or k == "category_dirs"
                             }
                             if "max_concurrent" in settings:
-                                translated["max_concurrent_downloads"] = settings[
-                                    "max_concurrent"
-                                ]
+                                translated["max_concurrent_downloads"] = settings["max_concurrent"]
                             if "max_bandwidth_kbps" in settings:
                                 value = settings["max_bandwidth_kbps"]
                                 if type(value) is not int or value < 0:
@@ -348,14 +368,10 @@ def _make_handler(manager: DownloadManager, token: str):
                             manager.app_config.apply_run_on_startup()
                             self._send_json(200, {"ok": True})
                         else:
-                            self._send_json(
-                                500, {"ok": False, "error": "No config available"}
-                            )
+                            self._send_json(500, {"ok": False, "error": "No config available"})
 
                     else:
-                        self._send_json(
-                            400, {"ok": False, "error": "Unknown RPC method"}
-                        )
+                        self._send_json(400, {"ok": False, "error": "Unknown RPC method"})
                 except (ValueError, TypeError, KeyError) as exc:
                     self._send_json(400, {"ok": False, "error": str(exc)})
                 except Exception as exc:
@@ -370,13 +386,9 @@ def _make_handler(manager: DownloadManager, token: str):
 class IpcServer:
     """Runs on a background thread inside the desktop app process."""
 
-    def __init__(
-        self, manager: DownloadManager, token: str, port: int = DEFAULT_PORT
-    ) -> None:
+    def __init__(self, manager: DownloadManager, token: str, port: int = DEFAULT_PORT) -> None:
         self.port = port
-        self._server = ThreadingHTTPServer(
-            ("127.0.0.1", port), _make_handler(manager, token)
-        )
+        self._server = ThreadingHTTPServer(("127.0.0.1", port), _make_handler(manager, token))
         self._thread: threading.Thread | None = None
 
     def start(self) -> None:

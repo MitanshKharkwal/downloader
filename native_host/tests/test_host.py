@@ -24,7 +24,15 @@ def app(tmp_path, monkeypatch):
         received.append(source)
         return DownloadTask(source, str(tmp_path / "output"), DownloadType.HTTP)
 
-    server = IpcServer(SimpleNamespace(add=add), "test-token", port=0)
+    manager = SimpleNamespace(add=add)
+
+    def add_batch(items):
+        for item in items:
+            add(item["source"])
+        return {"added": len(items), "skipped": 0, "failed": 0}
+
+    manager.add_batch = add_batch
+    server = IpcServer(manager, "test-token", port=0)
     monkeypatch.setattr(host, "IPC_PORT", server._server.server_port)
     server.start()
     yield received
@@ -58,6 +66,16 @@ def test_native_add_forwards_verification(app):
     assert post.call_args.kwargs["verify"] is True
 
 
+def test_native_batch_round_trip(app):
+    items = [
+        {"source": "https://example.invalid/one"},
+        {"source": "https://example.invalid/two"},
+    ]
+    result = host.handle({"action": "batch_add", "items": items})
+    assert result == {"ok": True, "added": 2, "skipped": 0, "failed": 0}
+    assert app == [item["source"] for item in items]
+
+
 def test_ping_without_daemon_does_not_report_connected(tmp_path, monkeypatch):
     token = tmp_path / "token.txt"
     token.write_text("test-token")
@@ -76,9 +94,7 @@ def test_ping_rejects_stale_host_token(app, tmp_path, monkeypatch):
     assert "token" in result["error"]
 
 
-@pytest.mark.parametrize(
-    "payload", [b"a", struct.pack("=I", 2**22), struct.pack("=I", 10) + b"{}"]
-)
+@pytest.mark.parametrize("payload", [b"a", struct.pack("=I", 2**22), struct.pack("=I", 10) + b"{}"])
 def test_malformed_native_frame(payload):
     with patch.object(host.sys, "stdin", SimpleNamespace(buffer=io.BytesIO(payload))):
         with pytest.raises(ValueError):

@@ -294,7 +294,8 @@ class _PreferencesDialogState extends State<PreferencesDialog> {
       schedule = false,
       metered = false,
       extract = true,
-      startup = false;
+      startup = false,
+      defender = true;
   int start = 2, end = 6;
   String? error;
   @override
@@ -317,6 +318,7 @@ class _PreferencesDialogState extends State<PreferencesDialog> {
       metered = config['pause_on_metered'] ?? false;
       extract = config['auto_extract'] ?? true;
       startup = settings['run_on_startup'] ?? false;
+      defender = config['defender_scan_enabled'] ?? true;
       for (final cat in [
         'Video',
         'Music',
@@ -376,6 +378,7 @@ class _PreferencesDialogState extends State<PreferencesDialog> {
         'pause_on_metered': metered,
         'auto_extract': extract,
         'run_on_startup': startup,
+        'defender_scan_enabled': defender,
         'category_dirs': {
           for (final entry in categories.entries)
             if (entry.value.text.trim().isNotEmpty)
@@ -507,6 +510,15 @@ class _PreferencesDialogState extends State<PreferencesDialog> {
                       title: const Text('Run service at sign-in'),
                       value: startup,
                       onChanged: (v) => setState(() => startup = v),
+                    ),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Scan completed files'),
+                      subtitle: const Text(
+                        'Uses Windows Defender and records a SHA-256 fingerprint',
+                      ),
+                      value: defender,
+                      onChanged: (v) => setState(() => defender = v),
                     ),
                     ExpansionTile(
                       tilePadding: EdgeInsets.zero,
@@ -676,6 +688,85 @@ class _DownloadDetailsState extends State<DownloadDetails> {
                       ],
                     ),
                   ),
+                if (d['health'] is Map && (d['health'] as Map).isNotEmpty)
+                  _DetailsPanel(
+                    title: 'Download health',
+                    icon: Icons.monitor_heart_outlined,
+                    values: {
+                      'Connection': d['health']['state'],
+                      'Acceleration':
+                          d['health']['acceleration'] ??
+                          'Waiting for server probe',
+                      'Final host': d['health']['final_host'] ?? '—',
+                      'HTTP status': d['health']['response_status'] ?? '—',
+                      'Range resume': d['health']['supports_ranges'] == true
+                          ? 'Available'
+                          : 'Unavailable',
+                      'Connections':
+                          d['health']['effective_connections'] ??
+                          d['health']['requested_connections'] ??
+                          '—',
+                      'Validator': d['health']['validator'] ?? '—',
+                      'Browser cookies':
+                          d['health']['cookies_forwarded'] == true
+                          ? 'Forwarded'
+                          : 'Not supplied',
+                      'Browser referrer':
+                          d['health']['referrer_forwarded'] == true
+                          ? 'Forwarded'
+                          : 'Not supplied',
+                      if ((d['health']['failure_reason'] ?? '')
+                          .toString()
+                          .isNotEmpty)
+                        'Why it failed': d['health']['failure_reason'],
+                    },
+                  ),
+                if (d['safety'] is Map)
+                  _DetailsPanel(
+                    title: 'Safety',
+                    icon: Icons.shield_outlined,
+                    values: {
+                      'Status': d['safety']['status'] ?? 'pending',
+                      'Windows Defender': d['safety']['defender'] ?? 'pending',
+                      if ((d['safety']['signature']?['status'] ?? '')
+                          .toString()
+                          .isNotEmpty)
+                        'Publisher signature':
+                            d['safety']['signature']['status'],
+                      if ((d['safety']['signature']?['signer'] ?? '')
+                          .toString()
+                          .isNotEmpty)
+                        'Publisher': d['safety']['signature']['signer'],
+                      if ((d['safety']['sha256'] ?? '').toString().isNotEmpty)
+                        'SHA-256': d['safety']['sha256'],
+                      if ((d['safety']['warnings'] as List? ?? []).isNotEmpty)
+                        'Warnings': (d['safety']['warnings'] as List).join(
+                          '\n',
+                        ),
+                    },
+                    action: widget.task.status == TaskStatus.completed
+                        ? TextButton.icon(
+                            onPressed: busy
+                                ? null
+                                : () async {
+                                    setState(() => busy = true);
+                                    try {
+                                      await widget.client.rpc('rescan_task', {
+                                        'task_id': widget.task.id,
+                                      });
+                                      await Future<void>.delayed(
+                                        const Duration(milliseconds: 250),
+                                      );
+                                      await load();
+                                    } finally {
+                                      if (mounted) setState(() => busy = false);
+                                    }
+                                  },
+                            icon: const Icon(Icons.refresh_rounded),
+                            label: const Text('Scan again'),
+                          )
+                        : null,
+                  ),
               ],
               DropdownButtonFormField<int>(
                 initialValue: priority,
@@ -741,6 +832,217 @@ class _DownloadDetailsState extends State<DownloadDetails> {
           child: const Text('Close'),
         ),
         FilledButton(onPressed: busy ? null : save, child: const Text('Apply')),
+      ],
+    );
+  }
+}
+
+class _DetailsPanel extends StatelessWidget {
+  const _DetailsPanel({
+    required this.title,
+    required this.icon,
+    required this.values,
+    this.action,
+  });
+  final String title;
+  final IconData icon;
+  final Map<String, dynamic> values;
+  final Widget? action;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    margin: const EdgeInsets.only(bottom: 18),
+    padding: const EdgeInsets.all(14),
+    decoration: BoxDecoration(
+      color: Theme.of(
+        context,
+      ).colorScheme.surfaceContainerHighest.withValues(alpha: .45),
+      borderRadius: BorderRadius.circular(14),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(icon, size: 18),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                title,
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+            ),
+            ?action,
+          ],
+        ),
+        const SizedBox(height: 10),
+        for (final entry in values.entries)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 7),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(
+                  width: 130,
+                  child: Text(
+                    entry.key,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+                Expanded(child: SelectableText('${entry.value}')),
+              ],
+            ),
+          ),
+      ],
+    ),
+  );
+}
+
+class UpdateDialog extends StatefulWidget {
+  const UpdateDialog({super.key, required this.client});
+  final IpcClient client;
+
+  @override
+  State<UpdateDialog> createState() => _UpdateDialogState();
+}
+
+class _UpdateDialogState extends State<UpdateDialog> {
+  Map<String, dynamic>? update;
+  Map<String, dynamic>? package;
+  String? error;
+  bool busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    check();
+  }
+
+  Future<void> check() async {
+    setState(() {
+      busy = true;
+      error = null;
+    });
+    try {
+      final result = await widget.client.rpc('check_for_updates');
+      if (mounted) {
+        setState(() => update = Map<String, dynamic>.from(result['update']));
+      }
+    } catch (e) {
+      if (mounted) setState(() => error = '$e');
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  Future<void> download() async {
+    setState(() {
+      busy = true;
+      error = null;
+    });
+    try {
+      final result = await widget.client.rpc('download_update');
+      if (mounted) {
+        setState(() => package = Map<String, dynamic>.from(result['package']));
+      }
+    } catch (e) {
+      if (mounted) setState(() => error = '$e');
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  Future<void> install() async {
+    setState(() {
+      busy = true;
+      error = null;
+    });
+    try {
+      await widget.client.rpc('install_update', {'path': package!['path']});
+      if (mounted) Navigator.pop(context);
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          error = '$e';
+          busy = false;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final available = update?['available'] == true;
+    return AlertDialog(
+      title: const Text('Software updates'),
+      content: SizedBox(
+        width: 500,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Installed version ${update?['current_version'] ?? '…'}'),
+            const SizedBox(height: 12),
+            if (busy) const LinearProgressIndicator(),
+            if (!busy && update != null)
+              Text(
+                available
+                    ? 'Version ${update!['version']} is available.'
+                    : 'You are using the latest stable version.',
+              ),
+            if (available && update?['ready'] != true)
+              const Padding(
+                padding: EdgeInsets.only(top: 10),
+                child: Text(
+                  'This release is missing its installer or SHA-256 manifest.',
+                ),
+              ),
+            if (package != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: Text(
+                  'Verified publisher: ${package!['signature']['signer']}',
+                ),
+              ),
+            if (error != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: Text(
+                  error!,
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                ),
+              ),
+            const SizedBox(height: 12),
+            const Text(
+              'Updates install only after SHA-256 verification and a valid trusted Windows publisher signature.',
+              style: TextStyle(fontSize: 12),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: busy ? null : () => Navigator.pop(context),
+          child: const Text('Close'),
+        ),
+        if (update == null || !available)
+          TextButton(
+            onPressed: busy ? null : check,
+            child: const Text('Check again'),
+          ),
+        if (available && package == null)
+          FilledButton(
+            onPressed: busy || update?['ready'] != true ? null : download,
+            child: const Text('Download and verify'),
+          ),
+        if (package != null)
+          FilledButton(
+            onPressed: busy ? null : install,
+            child: const Text('Install update'),
+          ),
       ],
     );
   }
