@@ -15,6 +15,10 @@ from __future__ import annotations
 import os
 import threading
 import time
+from typing import Any, cast
+from urllib.parse import quote_from_bytes, urlsplit, urlunsplit
+
+import requests
 
 try:
     import libtorrent as lt
@@ -35,6 +39,96 @@ from .models import DownloadStatus, DownloadTask, Priority
 LOW_PRIORITY_RATE_BPS = 1024 * 1024
 
 POLL_INTERVAL_SECONDS = 1.0
+
+
+def _tracker_counts(info, timeout: float) -> tuple[int | None, int | None, str]:
+    """Ask HTTP trackers for estimates; many trackers do not offer scrape."""
+    if not info.info_hashes().has_v1():
+        return None, None, "Tracker counts are unavailable for this torrent."
+    info_hash = info.info_hashes().v1.to_bytes()
+    for tracker in list(info.trackers())[:3]:
+        parsed = urlsplit(tracker.url)
+        if parsed.scheme not in ("http", "https"):
+            continue
+        last = parsed.path.rsplit("/", 1)[-1]
+        if not last.startswith("announce"):
+            continue
+        path = parsed.path[: -len(last)] + "scrape" + last[len("announce") :]
+        query = parsed.query + ("&" if parsed.query else "") + "info_hash=" + quote_from_bytes(
+            info_hash, safe=""
+        )
+        scrape_url = urlunsplit((parsed.scheme, parsed.netloc, path, query, ""))
+        try:
+            with requests.get(scrape_url, timeout=timeout, stream=True) as response:
+                response.raise_for_status()
+                payload = response.raw.read(64 * 1024 + 1)
+            if len(payload) > 64 * 1024:
+                continue
+            decoded = lt.bdecode(payload)
+            if not isinstance(decoded, dict):
+                continue
+            decoded = cast(dict[bytes, Any], decoded)
+            entries = decoded.get(b"files")
+            if not isinstance(entries, dict):
+                continue
+            entries = cast(dict[bytes, Any], entries)
+            counts = entries.get(info_hash)
+            if not isinstance(counts, dict):
+                continue
+            counts = cast(dict[bytes, Any], counts)
+            complete = counts.get(b"complete")
+            incomplete = counts.get(b"incomplete")
+            if type(complete) is not int or type(incomplete) is not int:
+                continue
+            return (
+                max(complete, 0),
+                max(incomplete, 0),
+                "Live tracker scrape",
+            )
+        except (requests.RequestException, ValueError, KeyError, TypeError, RuntimeError):
+            continue
+    return None, None, "The tracker did not provide seed and peer counts."
+
+
+def inspect_torrent_file(path: str, scrape_timeout: float = 6.0) -> dict:
+    """Read torrent contents and best-effort tracker counts without downloading."""
+    if not LIBTORRENT_AVAILABLE:
+        raise RuntimeError("Torrent support is unavailable in this build")
+    if not isinstance(path, str) or not os.path.isfile(path):
+        raise ValueError("Choose an existing .torrent file")
+    if not path.lower().endswith(".torrent"):
+        raise ValueError("The selected file must use the .torrent extension")
+    if os.path.getsize(path) > 20 * 1024 * 1024:
+        raise ValueError("Torrent metadata is unexpectedly large")
+
+    info = lt.torrent_info(path)
+    files = info.files()
+    listing: list[dict[str, Any]] = [
+        {
+            "name": files.file_path(index),
+            "size": files.file_size(index),
+            "priority": 0 if files.file_flags(index) & lt.file_storage.flag_pad_file else 4,
+            "pad": bool(files.file_flags(index) & lt.file_storage.flag_pad_file),
+        }
+        for index in range(files.num_files())
+    ]
+    result = {
+        "name": info.name(),
+        "total_size": sum(file["size"] for file in listing if not file["pad"]),
+        "files": listing,
+        "seeds": None,
+        "peers": None,
+        "tracker_status": "No tracker is included in this torrent.",
+    }
+    if not list(info.trackers()):
+        return result
+    if scrape_timeout <= 0:
+        result["tracker_status"] = "Tracker counts were not requested."
+        return result
+    seeds, peers, status = _tracker_counts(info, min(max(scrape_timeout, 0.1), 10.0))
+    result.update(seeds=seeds, peers=peers, tracker_status=status)
+    return result
+
 
 # libtorrent's internal state enum -> our DownloadStatus
 _STATE_MAP = (
@@ -221,6 +315,9 @@ class TorrentDownload:
             params.ti = info
             self.task.name = info.name()
             self.task.total_bytes = info.total_size()
+            if self.task.file_priorities:
+                params.file_priorities = self.task.file_priorities
+                self._files_prioritized = True
         params.save_path = self.task.dest_path
         # Reject duplicate torrents with the same info-hash as errors,
         # and allocate storage using sparse files on disk.

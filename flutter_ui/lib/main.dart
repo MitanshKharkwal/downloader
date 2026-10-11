@@ -13,17 +13,21 @@ class DownloadManagerApp extends StatefulWidget {
 
 class _DownloadManagerAppState extends State<DownloadManagerApp> {
   ThemeMode mode = ThemeMode.system;
+  bool compactRows = false;
+  bool reduceMotion = false;
   @override
   void initState() {
     super.initState();
     SharedPreferences.getInstance().then((prefs) {
       if (mounted) {
-        setState(
-          () => mode = ThemeMode.values.firstWhere(
+        setState(() {
+          mode = ThemeMode.values.firstWhere(
             (m) => m.name == prefs.getString('appearance'),
             orElse: () => ThemeMode.system,
-          ),
-        );
+          );
+          compactRows = prefs.getBool('compact_rows') ?? false;
+          reduceMotion = prefs.getBool('reduce_motion') ?? false;
+        });
       }
     });
   }
@@ -34,6 +38,18 @@ class _DownloadManagerAppState extends State<DownloadManagerApp> {
     await prefs.setString('appearance', value.name);
   }
 
+  Future<void> changeCompactRows(bool value) async {
+    setState(() => compactRows = value);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('compact_rows', value);
+  }
+
+  Future<void> changeReduceMotion(bool value) async {
+    setState(() => reduceMotion = value);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('reduce_motion', value);
+  }
+
   @override
   Widget build(BuildContext context) => MaterialApp(
     title: 'Fetchly',
@@ -41,6 +57,17 @@ class _DownloadManagerAppState extends State<DownloadManagerApp> {
     theme: libraryTheme(Brightness.light),
     darkTheme: libraryTheme(Brightness.dark),
     themeMode: mode,
-    home: LibraryScreen(mode: mode, onModeChanged: changeMode),
+    builder: (context, child) => MediaQuery(
+      data: MediaQuery.of(context).copyWith(disableAnimations: reduceMotion),
+      child: child!,
+    ),
+    home: LibraryScreen(
+      mode: mode,
+      onModeChanged: changeMode,
+      compactRows: compactRows,
+      reduceMotion: reduceMotion,
+      onCompactRowsChanged: changeCompactRows,
+      onReduceMotionChanged: changeReduceMotion,
+    ),
   );
 }

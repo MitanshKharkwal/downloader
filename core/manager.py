@@ -25,7 +25,7 @@ from .http_downloader import HttpDownload
 from .models import DownloadStatus, DownloadTask, DownloadType, Priority
 from .paths import cleanup_task_files, safe_filename, unique_path
 from .safety import inspect_download
-from .torrent_engine import TorrentDownload, TorrentSession
+from .torrent_engine import TorrentDownload, TorrentSession, inspect_torrent_file
 
 _MAGNET_RE = re.compile(r"^magnet:\?", re.IGNORECASE)
 LOW_PRIORITY_RATE_BPS = 1024 * 1024
@@ -216,6 +216,8 @@ class DownloadManager:
                 or any(type(p) is not int or not 0 <= p <= 7 for p in file_priorities)
             ):
                 raise ValueError("File priorities must be integers from 0 to 7")
+            if file_priorities and not source.lower().endswith(".torrent"):
+                raise ValueError("File selection requires a .torrent file")
             return self._add(source, dest_dir, filename, headers, mirrors, file_priorities)
 
     def reserve_filename(self, task: DownloadTask, name: str) -> str:
@@ -390,6 +392,16 @@ class DownloadManager:
             )
         elif source.lower().endswith(".torrent"):
             local_path = self._materialize_torrent_file(source)
+            if file_priorities is not None:
+                preview = inspect_torrent_file(local_path, scrape_timeout=0)
+                files = preview["files"]
+                if len(file_priorities) != len(files) or not any(
+                    priority > 0 and not file["pad"]
+                    for priority, file in zip(file_priorities, files)
+                ):
+                    raise ValueError("Select at least one downloadable torrent file")
+                if any(priority > 0 and file["pad"] for priority, file in zip(file_priorities, files)):
+                    raise ValueError("Torrent padding files cannot be selected")
             task = DownloadTask(
                 source=local_path,
                 dest_path=torrent_dir,
@@ -471,6 +483,9 @@ class DownloadManager:
             except (ValueError, TypeError, OSError):
                 failed += 1
         return {"added": added, "skipped": skipped, "failed": failed}
+
+    def inspect_torrent(self, path: str) -> dict:
+        return inspect_torrent_file(path)
 
     def pause(self, task_id: str, *, policy: bool = False) -> None:
         with self._operations:
@@ -663,6 +678,22 @@ class DownloadManager:
                 self._tasks.pop(task_id, None)
             self._save_state()
         self.events.emit("tasks_cleared", [task_id])
+
+    def remove_tasks(self, task_ids: list[str], delete_files: bool = False) -> dict[str, int]:
+        if (
+            not isinstance(task_ids, list)
+            or not 1 <= len(task_ids) <= 500
+            or any(not isinstance(task_id, str) or not task_id for task_id in task_ids)
+        ):
+            raise ValueError("Select between 1 and 500 downloads")
+        removed = missing = 0
+        for task_id in dict.fromkeys(task_ids):
+            if self.get(task_id) is None:
+                missing += 1
+                continue
+            self.remove_task(task_id, delete_files=delete_files)
+            removed += 1
+        return {"removed": removed, "missing": missing}
 
     def get(self, task_id: str) -> DownloadTask | None:
         with self._lock:

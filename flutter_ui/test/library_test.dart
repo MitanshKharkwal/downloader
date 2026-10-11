@@ -150,6 +150,47 @@ class SafetyDetailClient extends FakeClient {
   }
 }
 
+class FileClient extends FakeClient {
+  @override
+  Future<List<DownloadTask>> listTasks() async => [
+    DownloadTask(
+      id: 'file',
+      title: 'fixture.txt',
+      category: TaskCategory.documents,
+      sizeBytes: 7,
+      progress: 1,
+      speedBytesPerSec: 0,
+      status: TaskStatus.completed,
+      filePath: r'C:\Downloads\fixture.txt',
+    ),
+  ];
+}
+
+class TorrentInspectClient extends FakeClient {
+  @override
+  Future<dynamic> rpc(String method, [Map<String, dynamic>? args]) async {
+    if (method == 'inspect_torrent') {
+      calls.add(method);
+      lastArgs = args;
+      return {
+        'ok': true,
+        'torrent': {
+          'name': 'Fixture collection',
+          'total_size': 300,
+          'seeds': 12,
+          'peers': 4,
+          'tracker_status': 'Live tracker scrape',
+          'files': [
+            {'name': 'one.txt', 'size': 100, 'priority': 4, 'pad': false},
+            {'name': 'two.txt', 'size': 200, 'priority': 4, 'pad': false},
+          ],
+        },
+      };
+    }
+    return super.rpc(method, args);
+  }
+}
+
 void main() {
   test('server-denied download has an actionable error', () {
     final task = DownloadTask(
@@ -257,6 +298,148 @@ void main() {
     expect(find.text('Safety'), findsOneWidget);
     expect(find.text('abc123'), findsOneWidget);
     expect(find.text('4 connections'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+  testWidgets('selection mode removes several entries without deleting files', (
+    tester,
+  ) async {
+    final client = FakeClient();
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: libraryTheme(Brightness.light),
+        home: LibraryScreen(
+          client: client,
+          mode: ThemeMode.light,
+          onModeChanged: (_) {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Select downloads'));
+    await tester.pump();
+    await tester.tap(find.byType(Checkbox).at(0));
+    await tester.tap(find.byType(Checkbox).at(1));
+    await tester.pump();
+    expect(find.text('2 selected'), findsOneWidget);
+    await tester.tap(find.byTooltip('Remove from app'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Remove'));
+    await tester.pumpAndSettle();
+    expect(client.calls.where((call) => call == 'remove_tasks').length, 1);
+    expect((client.lastArgs!['task_ids'] as List).length, 2);
+    expect(client.lastArgs!['delete_files'], false);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+  });
+  testWidgets('selection actions fit in a narrow window', (tester) async {
+    tester.view.physicalSize = const Size(320, 560);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: libraryTheme(Brightness.light),
+        home: LibraryScreen(
+          client: FakeClient(),
+          mode: ThemeMode.light,
+          onModeChanged: (_) {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Select downloads'));
+    await tester.pump();
+    expect(find.byTooltip('Selection actions'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.tap(find.byTooltip('Selection actions'));
+    await tester.pumpAndSettle();
+    expect(find.text('Select all visible'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+  testWidgets('completed file icon and menu expose shell open actions', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: libraryTheme(Brightness.light),
+        home: LibraryScreen(
+          client: FileClient(),
+          mode: ThemeMode.light,
+          onModeChanged: (_) {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('Open fixture.txt'), findsOneWidget);
+    await tester.tap(find.byTooltip('Download actions'));
+    await tester.pumpAndSettle();
+    expect(find.text('Open file'), findsOneWidget);
+    expect(find.text('Open with…'), findsOneWidget);
+    expect(find.text('Show in folder'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+  });
+  testWidgets('appearance options save theme, density and motion', (
+    tester,
+  ) async {
+    ThemeMode? mode;
+    bool? compact;
+    bool? reduced;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: AppearanceDialog(
+            mode: ThemeMode.system,
+            compactRows: false,
+            reduceMotion: false,
+            onModeChanged: (value) => mode = value,
+            onCompactRowsChanged: (value) => compact = value,
+            onReduceMotionChanged: (value) => reduced = value,
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('Dark'));
+    await tester.tap(find.text('Compact download rows'));
+    await tester.tap(find.text('Reduce motion'));
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+    expect(mode, ThemeMode.dark);
+    expect(compact, true);
+    expect(reduced, true);
+    expect(tester.takeException(), isNull);
+  });
+  testWidgets('torrent import previews files and tracker counts before add', (
+    tester,
+  ) async {
+    final client = TorrentInspectClient();
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: libraryTheme(Brightness.light),
+        home: Scaffold(body: NewDownloadDialog(client: client)),
+      ),
+    );
+    await tester.enterText(
+      find.byType(TextField).first,
+      r'C:\Downloads\fixture.torrent',
+    );
+    await tester.pump();
+    await tester.tap(find.text('Inspect torrent contents'));
+    await tester.pumpAndSettle();
+    expect(find.text('Fixture collection'), findsOneWidget);
+    expect(find.textContaining('Seeds: 12'), findsOneWidget);
+    expect(find.textContaining('Peers: 4'), findsOneWidget);
+    expect(find.text('one.txt'), findsOneWidget);
+    expect(find.text('two.txt'), findsOneWidget);
+    final secondFile = find.byType(Checkbox).last;
+    await tester.ensureVisible(secondFile);
+    await tester.tap(secondFile);
+    final download = find.text('Download');
+    await tester.ensureVisible(download);
+    await tester.tap(download);
+    await tester.pumpAndSettle();
+    expect(client.calls, contains('add_download'));
+    expect(client.lastArgs!['file_priorities'], [4, 0]);
     expect(tester.takeException(), isNull);
   });
   testWidgets('video audio-only selection sends its format to the backend', (

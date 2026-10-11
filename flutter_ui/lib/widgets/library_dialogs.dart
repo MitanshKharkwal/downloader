@@ -19,6 +19,9 @@ class _NewDownloadDialogState extends State<NewDownloadDialog> {
       mirrors = TextEditingController();
   String kind = 'File', quality = 'best';
   String? error, videoTitle;
+  String? inspectedTorrent;
+  Map<String, dynamic>? torrentInfo;
+  List<int> torrentPriorities = [];
   bool busy = false;
   @override
   void dispose() {
@@ -45,6 +48,16 @@ class _NewDownloadDialogState extends State<NewDownloadDialog> {
           if (filename.text.trim().isNotEmpty) 'filename': filename.text.trim(),
         });
       } else {
+        if (url.toLowerCase().endsWith('.torrent') &&
+            !url.startsWith('http://') &&
+            !url.startsWith('https://') &&
+            inspectedTorrent != url) {
+          throw const FormatException('Inspect the torrent before downloading.');
+        }
+        if (torrentInfo != null &&
+            !torrentPriorities.any((value) => value > 0)) {
+          throw const FormatException('Select at least one torrent file.');
+        }
         final parsedHeaders = headers.text.trim().isEmpty
             ? <String, dynamic>{}
             : jsonDecode(headers.text);
@@ -65,9 +78,40 @@ class _NewDownloadDialogState extends State<NewDownloadDialog> {
               .map((s) => s.trim())
               .where((s) => s.isNotEmpty)
               .toList(),
+          if (torrentInfo != null && inspectedTorrent == url)
+            'file_priorities': torrentPriorities,
         });
       }
       if (mounted) Navigator.pop(context);
+    } catch (e) {
+      if (mounted) setState(() => error = '$e');
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  Future<void> inspectTorrent(String path) async {
+    setState(() {
+      busy = true;
+      error = null;
+      torrentInfo = null;
+      torrentPriorities = [];
+      source.text = path;
+    });
+    try {
+      final result = await widget.client.rpc('inspect_torrent', {'path': path});
+      final info = Map<String, dynamic>.from(result['torrent']);
+      final files = info['files'] as List? ?? [];
+      if (mounted) {
+        setState(() {
+          torrentInfo = info;
+          inspectedTorrent = path;
+          torrentPriorities = [
+            for (final file in files)
+              Map<String, dynamic>.from(file)['priority'] as int,
+          ];
+        });
+      }
     } catch (e) {
       if (mounted) setState(() => error = '$e');
     } finally {
@@ -117,7 +161,14 @@ class _NewDownloadDialogState extends State<NewDownloadDialog> {
                     ? 'Video page URL'
                     : 'URL, magnet link or torrent path',
               ),
-              onChanged: (_) => setState(() => videoTitle = null),
+              onChanged: (value) => setState(() {
+                videoTitle = null;
+                if (value.trim() != inspectedTorrent) {
+                  torrentInfo = null;
+                  inspectedTorrent = null;
+                  torrentPriorities = [];
+                }
+              }),
             ),
             if (kind == 'File')
               Align(
@@ -135,13 +186,128 @@ class _NewDownloadDialogState extends State<NewDownloadDialog> {
                             ],
                           );
                           if (file != null && mounted) {
-                            setState(() => source.text = file.path);
+                            await inspectTorrent(file.path);
                           }
                         },
                   icon: const Icon(Icons.folder_open_outlined, size: 18),
                   label: const Text('Choose torrent file'),
                 ),
               ),
+            if (kind == 'File' &&
+                source.text.trim().toLowerCase().endsWith('.torrent') &&
+                torrentInfo == null)
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  onPressed: busy
+                      ? null
+                      : () => inspectTorrent(source.text.trim()),
+                  icon: const Icon(Icons.manage_search_rounded, size: 18),
+                  label: const Text('Inspect torrent contents'),
+                ),
+              ),
+            if (kind == 'File' && torrentInfo != null) ...[
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.surfaceContainerHighest.withValues(alpha: .45),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      torrentInfo!['name']?.toString() ?? 'Torrent contents',
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                    const SizedBox(height: 5),
+                    Text(
+                      '${DownloadTask.formatBytes((torrentInfo!['total_size'] as num).round())} · '
+                      'Seeds: ${torrentInfo!['seeds'] ?? '—'} · '
+                      'Peers: ${torrentInfo!['peers'] ?? '—'}',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      torrentInfo!['tracker_status']?.toString() ?? '',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                    Row(
+                      children: [
+                        TextButton(
+                          onPressed: () => setState(() {
+                            final files = torrentInfo!['files'] as List;
+                            torrentPriorities = [
+                              for (final file in files)
+                                Map<String, dynamic>.from(file)['pad'] == true
+                                    ? 0
+                                    : 4,
+                            ];
+                          }),
+                          child: const Text('Select all'),
+                        ),
+                        TextButton(
+                          onPressed: () => setState(() {
+                            torrentPriorities = [
+                              for (final _ in torrentPriorities) 0,
+                            ];
+                          }),
+                          child: const Text('Select none'),
+                        ),
+                      ],
+                    ),
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxHeight: 230),
+                      child: ListView.builder(
+                        shrinkWrap: true,
+                        itemCount: (torrentInfo!['files'] as List).length,
+                        itemBuilder: (_, index) {
+                          final file = Map<String, dynamic>.from(
+                            (torrentInfo!['files'] as List)[index],
+                          );
+                          if (file['pad'] == true) {
+                            return const SizedBox.shrink();
+                          }
+                          return Material(
+                            color: Colors.transparent,
+                            child: CheckboxListTile(
+                              dense: true,
+                              contentPadding: EdgeInsets.zero,
+                              value: torrentPriorities[index] > 0,
+                              onChanged: busy
+                                  ? null
+                                  : (selected) => setState(() {
+                                      torrentPriorities[index] =
+                                          selected == true ? 4 : 0;
+                                    }),
+                              title: Text(
+                                file['name'].toString(),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              subtitle: Text(
+                                DownloadTask.formatBytes(
+                                  (file['size'] as num).round(),
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
             if (kind == 'Video') ...[
               const SizedBox(height: 16),
               DropdownButtonFormField<String>(
@@ -898,6 +1064,101 @@ class _DetailsPanel extends StatelessWidget {
           ),
       ],
     ),
+  );
+}
+
+class AppearanceDialog extends StatefulWidget {
+  const AppearanceDialog({
+    super.key,
+    required this.mode,
+    required this.compactRows,
+    required this.reduceMotion,
+    required this.onModeChanged,
+    required this.onCompactRowsChanged,
+    required this.onReduceMotionChanged,
+  });
+
+  final ThemeMode mode;
+  final bool compactRows;
+  final bool reduceMotion;
+  final ValueChanged<ThemeMode> onModeChanged;
+  final ValueChanged<bool> onCompactRowsChanged;
+  final ValueChanged<bool> onReduceMotionChanged;
+
+  @override
+  State<AppearanceDialog> createState() => _AppearanceDialogState();
+}
+
+class _AppearanceDialogState extends State<AppearanceDialog> {
+  late ThemeMode mode = widget.mode;
+  late bool compactRows = widget.compactRows;
+  late bool reduceMotion = widget.reduceMotion;
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: const Text('Appearance'),
+    content: SizedBox(
+      width: 440,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Text('Theme', style: TextStyle(fontWeight: FontWeight.w600)),
+          const SizedBox(height: 10),
+          SegmentedButton<ThemeMode>(
+            segments: const [
+              ButtonSegment(
+                value: ThemeMode.system,
+                icon: Icon(Icons.brightness_auto_outlined),
+                label: Text('System'),
+              ),
+              ButtonSegment(
+                value: ThemeMode.light,
+                icon: Icon(Icons.light_mode_outlined),
+                label: Text('Light'),
+              ),
+              ButtonSegment(
+                value: ThemeMode.dark,
+                icon: Icon(Icons.dark_mode_outlined),
+                label: Text('Dark'),
+              ),
+            ],
+            selected: {mode},
+            onSelectionChanged: (value) => setState(() => mode = value.first),
+          ),
+          const SizedBox(height: 18),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Compact download rows'),
+            subtitle: const Text('Fits more downloads on screen'),
+            value: compactRows,
+            onChanged: (value) => setState(() => compactRows = value),
+          ),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Reduce motion'),
+            subtitle: const Text('Minimizes interface animations'),
+            value: reduceMotion,
+            onChanged: (value) => setState(() => reduceMotion = value),
+          ),
+        ],
+      ),
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.pop(context),
+        child: const Text('Cancel'),
+      ),
+      FilledButton(
+        onPressed: () {
+          widget.onModeChanged(mode);
+          widget.onCompactRowsChanged(compactRows);
+          widget.onReduceMotionChanged(reduceMotion);
+          Navigator.pop(context);
+        },
+        child: const Text('Save'),
+      ),
+    ],
   );
 }
 

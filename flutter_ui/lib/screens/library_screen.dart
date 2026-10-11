@@ -14,10 +14,18 @@ class LibraryScreen extends StatefulWidget {
     required this.mode,
     required this.onModeChanged,
     this.client,
+    this.compactRows = false,
+    this.reduceMotion = false,
+    this.onCompactRowsChanged,
+    this.onReduceMotionChanged,
   });
   final ThemeMode mode;
   final ValueChanged<ThemeMode> onModeChanged;
   final IpcClient? client;
+  final bool compactRows;
+  final bool reduceMotion;
+  final ValueChanged<bool>? onCompactRowsChanged;
+  final ValueChanged<bool>? onReduceMotionChanged;
   @override
   State<LibraryScreen> createState() => _LibraryScreenState();
 }
@@ -31,6 +39,8 @@ class _LibraryScreenState extends State<LibraryScreen> {
   bool connected = true, loading = true, fetching = false;
   bool? serviceCompatible;
   final Set<String> pending = {};
+  final Set<String> selected = {};
+  bool selecting = false;
   Timer? timer;
   Timer? updateTimer;
   String? availableUpdate;
@@ -88,6 +98,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
       if (mounted) {
         setState(() {
           tasks = result;
+          selected.removeWhere((id) => !result.any((task) => task.id == id));
           connected = true;
           serviceCompatible = compatible;
           loading = false;
@@ -135,7 +146,11 @@ class _LibraryScreenState extends State<LibraryScreen> {
     await refresh(force: true);
   }
 
-  Future<bool> confirm(String title, String text) async =>
+  Future<bool> confirm(
+    String title,
+    String text, {
+    String actionLabel = 'Continue',
+  }) async =>
       await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
@@ -148,7 +163,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
             ),
             FilledButton(
               onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Continue'),
+              child: Text(actionLabel),
             ),
           ],
         ),
@@ -176,6 +191,28 @@ class _LibraryScreenState extends State<LibraryScreen> {
       });
       return;
     }
+    if (method == 'open' || method == 'open_with') {
+      await action(task.id, () async {
+        final path = task.filePath;
+        if (path == null ||
+            path.isEmpty ||
+            await FileSystemEntity.type(path) ==
+                FileSystemEntityType.notFound) {
+          throw Exception('The downloaded file is no longer available.');
+        }
+        if (method == 'open_with' && FileSystemEntity.isFileSync(path)) {
+          await Process.start('rundll32.exe', [
+            'shell32.dll,OpenAs_RunDLL',
+            path,
+          ], mode: ProcessStartMode.detached);
+        } else {
+          await Process.start('explorer.exe', [
+            path,
+          ], mode: ProcessStartMode.detached);
+        }
+      });
+      return;
+    }
     if (method == 'cancel' || method == 'delete') {
       if (!await confirm(
         method == 'delete'
@@ -193,6 +230,41 @@ class _LibraryScreenState extends State<LibraryScreen> {
         'task_id': task.id,
         if (method == 'delete') 'delete_files': true,
       });
+    });
+  }
+
+  void toggleSelection(DownloadTask task) {
+    setState(() {
+      selecting = true;
+      if (!selected.add(task.id)) selected.remove(task.id);
+    });
+  }
+
+  void leaveSelection() => setState(() {
+    selecting = false;
+    selected.clear();
+  });
+
+  Future<void> removeSelected({required bool deleteFiles}) async {
+    if (selected.isEmpty) return;
+    final count = selected.length;
+    final approved = await confirm(
+      deleteFiles
+          ? 'Delete $count selected downloads?'
+          : 'Remove $count selected downloads?',
+      deleteFiles
+          ? 'The selected entries and their downloaded or partial files will be permanently removed.'
+          : 'The selected entries will leave the app. Downloaded files will stay on your computer.',
+      actionLabel: deleteFiles ? 'Delete files' : 'Remove',
+    );
+    if (!approved || !mounted) return;
+    final ids = selected.toList(growable: false);
+    await action('selection', () async {
+      await client.rpc('remove_tasks', {
+        'task_ids': ids,
+        'delete_files': deleteFiles,
+      });
+      if (mounted) leaveSelection();
     });
   }
 
@@ -305,58 +377,173 @@ class _LibraryScreenState extends State<LibraryScreen> {
                                 horizontal: 24,
                                 vertical: 16,
                               ),
-                              child: Row(
-                                children: [
-                                  Expanded(
-                                    child: TextField(
-                                      controller: search,
-                                      onChanged: (_) => setState(() {}),
-                                      decoration: const InputDecoration(
-                                        hintText: 'Search downloads',
-                                        prefixIcon: Icon(
-                                          Icons.search_rounded,
-                                          size: 21,
+                              child: selecting
+                                  ? Row(
+                                      children: [
+                                        IconButton(
+                                          tooltip: 'Exit selection',
+                                          onPressed: leaveSelection,
+                                          icon: const Icon(Icons.close_rounded),
                                         ),
-                                        border: OutlineInputBorder(
-                                          borderRadius: BorderRadius.all(
-                                            Radius.circular(12),
+                                        const SizedBox(width: 8),
+                                        Expanded(
+                                          child: Text(
+                                            '${selected.length} selected',
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.w600,
+                                            ),
                                           ),
-                                          borderSide: BorderSide.none,
                                         ),
-                                        enabledBorder: OutlineInputBorder(
-                                          borderRadius: BorderRadius.all(
-                                            Radius.circular(12),
+                                        if (size.maxWidth < 600)
+                                          PopupMenuButton<String>(
+                                            tooltip: 'Selection actions',
+                                            onSelected: (action) {
+                                              switch (action) {
+                                                case 'all':
+                                                  setState(() {
+                                                    selected.addAll(
+                                                      visible.map(
+                                                        (task) => task.id,
+                                                      ),
+                                                    );
+                                                  });
+                                                  return;
+                                                case 'remove':
+                                                  removeSelected(
+                                                    deleteFiles: false,
+                                                  );
+                                                  return;
+                                                case 'delete':
+                                                  removeSelected(
+                                                    deleteFiles: true,
+                                                  );
+                                                  return;
+                                              }
+                                            },
+                                            itemBuilder: (_) => [
+                                              const PopupMenuItem(
+                                                value: 'all',
+                                                child: Text('Select all visible'),
+                                              ),
+                                              PopupMenuItem(
+                                                value: 'remove',
+                                                enabled: selected.isNotEmpty,
+                                                child: const Text(
+                                                  'Remove from app',
+                                                ),
+                                              ),
+                                              PopupMenuItem(
+                                                value: 'delete',
+                                                enabled: selected.isNotEmpty,
+                                                child: const Text(
+                                                  'Delete files and entries',
+                                                ),
+                                              ),
+                                            ],
+                                          )
+                                        else ...[
+                                          IconButton(
+                                            tooltip: 'Select all visible',
+                                            onPressed: () => setState(() {
+                                              selected.addAll(
+                                                visible.map((task) => task.id),
+                                              );
+                                            }),
+                                            icon: const Icon(
+                                              Icons.select_all_rounded,
+                                            ),
                                           ),
-                                          borderSide: BorderSide.none,
+                                          IconButton(
+                                            tooltip: 'Remove from app',
+                                            onPressed: selected.isEmpty
+                                                ? null
+                                                : () => removeSelected(
+                                                    deleteFiles: false,
+                                                  ),
+                                            icon: const Icon(
+                                              Icons.remove_circle_outline_rounded,
+                                            ),
+                                          ),
+                                          IconButton(
+                                            tooltip: 'Delete files and entries',
+                                            onPressed: selected.isEmpty
+                                                ? null
+                                                : () => removeSelected(
+                                                    deleteFiles: true,
+                                                  ),
+                                            icon: const Icon(
+                                              Icons.delete_outline_rounded,
+                                            ),
+                                          ),
+                                        ],
+                                      ],
+                                    )
+                                  : Row(
+                                      children: [
+                                        Expanded(
+                                          child: TextField(
+                                            controller: search,
+                                            onChanged: (_) => setState(() {}),
+                                            decoration: const InputDecoration(
+                                              hintText: 'Search downloads',
+                                              prefixIcon: Icon(
+                                                Icons.search_rounded,
+                                                size: 21,
+                                              ),
+                                              border: OutlineInputBorder(
+                                                borderRadius: BorderRadius.all(
+                                                  Radius.circular(12),
+                                                ),
+                                                borderSide: BorderSide.none,
+                                              ),
+                                              enabledBorder: OutlineInputBorder(
+                                                borderRadius: BorderRadius.all(
+                                                  Radius.circular(12),
+                                                ),
+                                                borderSide: BorderSide.none,
+                                              ),
+                                            ),
+                                          ),
                                         ),
-                                      ),
+                                        const SizedBox(width: 12),
+                                        IconButton(
+                                          tooltip: 'Select downloads',
+                                          onPressed: serviceCompatible == false
+                                              ? null
+                                              : () => setState(
+                                                  () => selecting = true,
+                                                ),
+                                          icon: const Icon(
+                                            Icons.checklist_rounded,
+                                          ),
+                                        ),
+                                        PopupMenuButton<String>(
+                                          tooltip: 'Queue actions',
+                                          enabled:
+                                              serviceCompatible != false &&
+                                              !pending.contains('queue'),
+                                          onSelected: queueAction,
+                                          itemBuilder: (_) => [
+                                            for (final entry in {
+                                              'pause_all': 'Pause all',
+                                              'resume_all': 'Resume all',
+                                              'clear_finished':
+                                                  'Clear finished',
+                                              'import_queue': 'Import queue…',
+                                              'export_queue': 'Export queue…',
+                                              'shutdown': 'Stop service…',
+                                            }.entries)
+                                              PopupMenuItem(
+                                                value: entry.key,
+                                                child: Text(entry.value),
+                                              ),
+                                          ],
+                                          icon: const Icon(
+                                            Icons.more_horiz_rounded,
+                                          ),
+                                        ),
+                                      ],
                                     ),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  PopupMenuButton<String>(
-                                    tooltip: 'Queue actions',
-                                    enabled:
-                                        serviceCompatible != false &&
-                                        !pending.contains('queue'),
-                                    onSelected: queueAction,
-                                    itemBuilder: (_) => [
-                                      for (final entry in {
-                                        'pause_all': 'Pause all',
-                                        'resume_all': 'Resume all',
-                                        'clear_finished': 'Clear finished',
-                                        'import_queue': 'Import queue…',
-                                        'export_queue': 'Export queue…',
-                                        'shutdown': 'Stop service…',
-                                      }.entries)
-                                        PopupMenuItem(
-                                          value: entry.key,
-                                          child: Text(entry.value),
-                                        ),
-                                    ],
-                                    icon: const Icon(Icons.more_horiz_rounded),
-                                  ),
-                                ],
-                              ),
                             ),
                           ),
                           if (!connected)
@@ -714,6 +901,33 @@ class _LibraryScreenState extends State<LibraryScreen> {
                         ),
                   ],
                 ),
+                TextButton(
+                  onPressed: () => showDialog<void>(
+                    context: context,
+                    builder: (_) => AppearanceDialog(
+                      mode: widget.mode,
+                      compactRows: widget.compactRows,
+                      reduceMotion: widget.reduceMotion,
+                      onModeChanged: widget.onModeChanged,
+                      onCompactRowsChanged:
+                          widget.onCompactRowsChanged ?? (_) {},
+                      onReduceMotionChanged:
+                          widget.onReduceMotionChanged ?? (_) {},
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: narrow
+                        ? MainAxisAlignment.center
+                        : MainAxisAlignment.start,
+                    children: [
+                      const Icon(Icons.palette_outlined, size: 20),
+                      if (!narrow) ...[
+                        const SizedBox(width: 12),
+                        const Text('Display options'),
+                      ],
+                    ],
+                  ),
+                ),
                 const SizedBox(height: 8),
                 TextButton(
                   onPressed: serviceCompatible == false
@@ -824,6 +1038,10 @@ class _LibraryScreenState extends State<LibraryScreen> {
         t.status == TaskStatus.queued;
     final failed =
         t.status == TaskStatus.error || t.status == TaskStatus.canceled;
+    final hasFile =
+        t.status == TaskStatus.completed &&
+        t.filePath != null &&
+        t.filePath!.isNotEmpty;
     final primary = active
         ? 'pause'
         : failed
@@ -833,19 +1051,39 @@ class _LibraryScreenState extends State<LibraryScreen> {
       color: Colors.transparent,
       child: InkWell(
         borderRadius: BorderRadius.circular(14),
-        onTap: () => taskAction(t, 'details'),
+        onTap: () => selecting ? toggleSelection(t) : taskAction(t, 'details'),
+        onLongPress: () => toggleSelection(t),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 20),
+          padding: EdgeInsets.symmetric(
+            horizontal: 8,
+            vertical: widget.compactRows ? 11 : 20,
+          ),
           child: Row(
             children: [
-              Container(
-                width: 46,
-                height: 50,
-                decoration: BoxDecoration(
+              if (selecting) ...[
+                Checkbox(
+                  value: selected.contains(t.id),
+                  onChanged: (_) => toggleSelection(t),
+                ),
+                const SizedBox(width: 4),
+              ],
+              Tooltip(
+                message: hasFile
+                    ? 'Open ${t.title}'
+                    : 'Available when the download finishes',
+                child: Material(
                   color: c.primary.withValues(alpha: .07),
                   borderRadius: BorderRadius.circular(12),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(12),
+                    onTap: hasFile ? () => taskAction(t, 'open') : null,
+                    child: SizedBox(
+                      width: 46,
+                      height: widget.compactRows ? 42 : 50,
+                      child: Icon(t.category.icon, color: c.primary, size: 23),
+                    ),
+                  ),
                 ),
-                child: Icon(t.category.icon, color: c.primary, size: 23),
               ),
               const SizedBox(width: 18),
               Expanded(
@@ -902,7 +1140,9 @@ class _LibraryScreenState extends State<LibraryScreen> {
                   ),
                 ),
               const SizedBox(width: 12),
-              if (busy)
+              if (selecting)
+                const SizedBox.shrink()
+              else if (busy)
                 const SizedBox(
                   width: 40,
                   height: 24,
@@ -914,7 +1154,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
                     ),
                   ),
                 )
-              else if (t.status == TaskStatus.completed)
+              else if (hasFile)
                 IconButton(
                   tooltip: 'Show in folder',
                   onPressed: serviceCompatible == false
@@ -941,11 +1181,26 @@ class _LibraryScreenState extends State<LibraryScreen> {
                     size: 22,
                   ),
                 ),
-              PopupMenuButton<String>(
+              if (!selecting) PopupMenuButton<String>(
                 tooltip: 'Download actions',
                 enabled: serviceCompatible != false && !busy,
                 onSelected: (m) => taskAction(t, m),
                 itemBuilder: (_) => [
+                  if (hasFile)
+                    const PopupMenuItem(
+                      value: 'open',
+                      child: Text('Open file'),
+                    ),
+                  if (hasFile)
+                    const PopupMenuItem(
+                      value: 'open_with',
+                      child: Text('Open with…'),
+                    ),
+                  if (hasFile)
+                    const PopupMenuItem(
+                      value: 'reveal',
+                      child: Text('Show in folder'),
+                    ),
                   const PopupMenuItem(
                     value: 'details',
                     child: Text('Details & priority'),

@@ -189,8 +189,12 @@ def _make_handler(manager: DownloadManager, token: str):
                             filename=args.get("filename"),
                             headers=args.get("headers"),
                             mirrors=args.get("mirrors"),
+                            file_priorities=args.get("file_priorities"),
                         )
                         self._send_json(200, {"ok": True, "id": task.id})
+                    elif method == "inspect_torrent":
+                        preview = manager.inspect_torrent(args.get("path"))
+                        self._send_json(200, {"ok": True, "torrent": preview})
                     elif method == "task_details":
                         self._send_json(
                             200,
@@ -321,6 +325,14 @@ def _make_handler(manager: DownloadManager, token: str):
                         if task_id:
                             manager.remove_task(task_id, delete_files)
                         self._send_json(200, {"ok": True})
+                    elif method == "remove_tasks":
+                        delete_files = args.get("delete_files", False)
+                        if type(delete_files) is not bool:
+                            raise ValueError("delete_files must be true or false")
+                        result = manager.remove_tasks(
+                            args.get("task_ids"), delete_files=delete_files
+                        )
+                        self._send_json(200, {"ok": True, **result})
                     elif method == "shutdown":
                         manager.shutdown()
                         self._send_json(200, {"ok": True})

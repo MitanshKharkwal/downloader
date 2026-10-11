@@ -1,6 +1,7 @@
 """Desktop feature bridge coverage, with no public-network downloads."""
 
 import json
+import os
 import urllib.request
 from unittest.mock import Mock, patch
 
@@ -103,6 +104,30 @@ def test_explicit_destination_overrides_category_folder(bridge, tmp_path):
         "magnet:?xt=urn:btih:123", dest_dir=str(tmp_path / "chosen")
     )
     assert torrent.id == duplicate.id
+
+
+def test_bulk_remove_can_keep_or_delete_downloaded_files(bridge, tmp_path):
+    manager, rpc = bridge
+    keep = manager.add("https://example.invalid/keep.txt")
+    delete = manager.add("https://example.invalid/delete.txt")
+    with open(keep.dest_path, "w") as target:
+        target.write("keep")
+    with open(delete.dest_path, "w") as target:
+        target.write("delete")
+
+    result = rpc(
+        "remove_tasks",
+        {"task_ids": [keep.id], "delete_files": False},
+    )
+    assert result["removed"] == 1
+    assert os.path.exists(keep.dest_path)
+
+    result = rpc(
+        "remove_tasks",
+        {"task_ids": [delete.id], "delete_files": True},
+    )
+    assert result["removed"] == 1
+    assert not os.path.exists(delete.dest_path)
 
 
 def test_urgent_pauses_other_downloads_and_pause_releases_them(bridge):

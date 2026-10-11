@@ -7,7 +7,7 @@ A desktop download manager with a polished Flutter UI, a Python engine, and a Ch
 | Capability | Detail |
 |---|---|
 | **Multi-connection HTTP** | Segmented, parallel, resumable downloads with auto-retry |
-| **Torrent / Magnet** | Full torrent support via libtorrent |
+| **Torrent / Magnet** | Import `.torrent` files, choose contents before starting, and preview available tracker seed/peer counts |
 | **Video downloads** | YouTube and 1000+ sites via yt-dlp |
 | **Smart organisation** | Auto-categorisation by file type, auto-extraction of archives |
 | **Bandwidth control** | Global cap, time-of-day scheduling, per-task priority |
@@ -15,7 +15,7 @@ A desktop download manager with a polished Flutter UI, a Python engine, and a Ch
 | **Download health** | Shows server status, range/resume support, connection count, and browser-session handoff state |
 | **Safety checks** | Records SHA-256, flags suspicious filenames and signatures, and can scan with Windows Defender |
 | **Verified updates** | Checks GitHub releases and accepts only checksum-matched, trusted-publisher installers |
-| **Flutter UI** | Glass-skin desktop app — dark, animated, responsive |
+| **Flutter UI** | Glass-skin desktop app with system/light/dark themes, compact rows, and reduced motion |
 
 ## Architecture
 
@@ -30,6 +30,8 @@ Flutter UI        →  POST /rpc (JSON-RPC)  →  daemon.py (Python)
 The daemon is a single headless Python process that owns all download state. Both clients (browser extension and Flutter UI) communicate over localhost-only, token-authenticated HTTP.
 
 Completed downloads expose their safety report and download health in **Download details**. Windows Defender scanning can be disabled in Settings; SHA-256 fingerprinting and filename warnings remain available. The Updates screen checks the repository's latest stable release and will not install an unsigned package or one whose checksum differs from `SHA256SUMS.txt`.
+
+Use **Appearance** in the sidebar to choose a theme, compact download rows, or reduce motion. Click a completed download's file icon to open it, or use its action menu for **Open with…**. **Select downloads** supports bulk removal from the app or deletion of both entries and their downloaded files. For a `.torrent` file, choose it in **New download** to review its contents and select files before starting. Seed and peer counts are live tracker estimates when an HTTP tracker supports scrape; otherwise they appear as unavailable.
 
 ## Quickstart
 
