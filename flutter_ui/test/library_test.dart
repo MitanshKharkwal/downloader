@@ -79,6 +79,24 @@ class OldServiceClient extends FakeClient {
   }
 }
 
+class LegacyBulkClient extends FakeClient {
+  final removalArgs = <Map<String, dynamic>>[];
+
+  @override
+  Future<dynamic> rpc(String method, [Map<String, dynamic>? args]) async {
+    if (method == 'remove_tasks') {
+      calls.add(method);
+      throw const IpcException(400, 'Unknown RPC method');
+    }
+    if (method == 'remove_task') {
+      calls.add(method);
+      removalArgs.add(Map<String, dynamic>.from(args!));
+      return {'ok': true};
+    }
+    return super.rpc(method, args);
+  }
+}
+
 class TorrentDetailClient extends FakeClient {
   @override
   Future<dynamic> rpc(String method, [Map<String, dynamic>? args]) async {
@@ -202,6 +220,51 @@ class TorrentInspectClient extends FakeClient {
 }
 
 void main() {
+  for (final deleteFiles in [false, true]) {
+    testWidgets(
+      'bulk ${deleteFiles ? 'delete' : 'remove'} falls back for an older service',
+      (tester) async {
+        final client = LegacyBulkClient();
+        await tester.pumpWidget(
+          MaterialApp(
+            home: LibraryScreen(
+              client: client,
+              mode: ThemeMode.light,
+              onModeChanged: (_) {},
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.byTooltip('Select downloads'));
+        await tester.pump();
+        await tester.tap(find.byTooltip('Select all visible'));
+        await tester.pump();
+        await tester.tap(
+          find.byTooltip(
+            deleteFiles ? 'Delete files and entries' : 'Remove from app',
+          ),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.text(deleteFiles ? 'Delete files' : 'Remove'));
+        await tester.pumpAndSettle();
+        expect(
+          client.calls.where((call) => call == 'remove_tasks'),
+          hasLength(1),
+        );
+        expect(
+          client.calls.where((call) => call == 'remove_task'),
+          hasLength(3),
+        );
+        expect(
+          client.removalArgs,
+          everyElement(containsPair('delete_files', deleteFiles)),
+        );
+        expect(find.textContaining('selected'), findsNothing);
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox());
+      },
+    );
+  }
   testWidgets('bulk deletion can be canceled and failures preserve selection', (
     tester,
   ) async {

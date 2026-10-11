@@ -278,10 +278,22 @@ class _LibraryScreenState extends State<LibraryScreen> {
     if (!approved || !mounted) return;
     final ids = selected.toList(growable: false);
     await action('selection', () async {
-      await client.rpc('remove_tasks', {
-        'task_ids': ids,
-        'delete_files': deleteFiles,
-      });
+      try {
+        await client.rpc('remove_tasks', {
+          'task_ids': ids,
+          'delete_files': deleteFiles,
+        });
+      } on IpcException catch (error) {
+        if (!error.isUnknownMethod) rethrow;
+        // Services installed before bulk removal still expose remove_task.
+        // Keep the new UI usable while the old daemon is being replaced.
+        for (final id in ids) {
+          await client.rpc('remove_task', {
+            'task_id': id,
+            'delete_files': deleteFiles,
+          });
+        }
+      }
       if (mounted) leaveSelection();
     });
   }

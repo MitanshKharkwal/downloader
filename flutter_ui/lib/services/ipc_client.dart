@@ -3,6 +3,18 @@ import 'dart:io';
 import 'package:http/http.dart' as http;
 import '../models/download_task.dart';
 
+class IpcException implements Exception {
+  const IpcException(this.statusCode, this.message);
+  final int statusCode;
+  final String message;
+
+  bool get isUnknownMethod =>
+      statusCode == 400 && message.toLowerCase().contains('unknown rpc method');
+
+  @override
+  String toString() => 'Exception: $message';
+}
+
 class IpcClient {
   Future<dynamic> rpc(String method, [Map<String, dynamic>? args]) =>
       _callMethod(method, args);
@@ -47,7 +59,7 @@ class IpcClient {
 
     if (response.statusCode == 401) _token = null;
     if (response.statusCode != 200) {
-      throw Exception(_errorText(response));
+      throw IpcException(response.statusCode, _errorText(response));
     }
 
     final data = jsonDecode(response.body);
