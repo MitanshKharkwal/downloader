@@ -15,7 +15,7 @@ A desktop download manager with a polished Flutter UI, a Python engine, and a Ch
 | **Download health** | Shows server status, range/resume support, connection count, and browser-session handoff state |
 | **Safety checks** | Records SHA-256, flags suspicious filenames and signatures, and can scan with Windows Defender |
 | **Verified updates** | Checks GitHub releases and accepts only checksum-matched, trusted-publisher installers |
-| **Flutter UI** | Glass-skin desktop app with system/light/dark themes, compact rows, and reduced motion |
+| **Flutter UI** | Subtle glass panels, system/light/dark themes, five accent colors, compact rows, and reduced motion |
 
 ## Architecture
 
@@ -31,7 +31,7 @@ The daemon is a single headless Python process that owns all download state. Bot
 
 Completed downloads expose their safety report and download health in **Download details**. Windows Defender scanning can be disabled in Settings; SHA-256 fingerprinting and filename warnings remain available. The Updates screen checks the repository's latest stable release and will not install an unsigned package or one whose checksum differs from `SHA256SUMS.txt`.
 
-Use **Appearance** in the sidebar to choose a theme, compact download rows, or reduce motion. Click a completed download's file icon to open it, or use its action menu for **Open with…**. **Select downloads** supports bulk removal from the app or deletion of both entries and their downloaded files. For a `.torrent` file, choose it in **New download** to review its contents and select files before starting. Seed and peer counts are live tracker estimates when an HTTP tracker supports scrape; otherwise they appear as unavailable.
+Use **Settings → Appearance & color** or **Display options** in the sidebar to choose a theme, accent color (pink, blue, purple, teal, or amber), compact download rows, or reduce motion. Click a completed download's file icon to open it, or use its action menu for **Open with…**. **Select downloads** supports bulk removal from the app or deletion of both entries and their downloaded files. For a `.torrent` file, choose it in **New download** to review its contents and select files before starting. Seed and peer counts are live tracker estimates when an HTTP tracker supports scrape; otherwise they appear as unavailable.
 
 ## Quickstart
 

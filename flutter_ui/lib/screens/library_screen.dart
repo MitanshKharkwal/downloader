@@ -18,6 +18,8 @@ class LibraryScreen extends StatefulWidget {
     this.reduceMotion = false,
     this.onCompactRowsChanged,
     this.onReduceMotionChanged,
+    this.accent = AccentColor.pink,
+    this.onAccentChanged,
   });
   final ThemeMode mode;
   final ValueChanged<ThemeMode> onModeChanged;
@@ -26,6 +28,8 @@ class LibraryScreen extends StatefulWidget {
   final bool reduceMotion;
   final ValueChanged<bool>? onCompactRowsChanged;
   final ValueChanged<bool>? onReduceMotionChanged;
+  final AccentColor accent;
+  final ValueChanged<AccentColor>? onAccentChanged;
   @override
   State<LibraryScreen> createState() => _LibraryScreenState();
 }
@@ -245,6 +249,20 @@ class _LibraryScreenState extends State<LibraryScreen> {
     selected.clear();
   });
 
+  void showAppearance() => showDialog<void>(
+    context: context,
+    builder: (_) => AppearanceDialog(
+      mode: widget.mode,
+      accent: widget.accent,
+      onAccentChanged: widget.onAccentChanged,
+      compactRows: widget.compactRows,
+      reduceMotion: widget.reduceMotion,
+      onModeChanged: widget.onModeChanged,
+      onCompactRowsChanged: widget.onCompactRowsChanged ?? (_) {},
+      onReduceMotionChanged: widget.onReduceMotionChanged ?? (_) {},
+    ),
+  );
+
   Future<void> removeSelected({required bool deleteFiles}) async {
     if (selected.isEmpty) return;
     final count = selected.length;
@@ -423,7 +441,9 @@ class _LibraryScreenState extends State<LibraryScreen> {
                                             itemBuilder: (_) => [
                                               const PopupMenuItem(
                                                 value: 'all',
-                                                child: Text('Select all visible'),
+                                                child: Text(
+                                                  'Select all visible',
+                                                ),
                                               ),
                                               PopupMenuItem(
                                                 value: 'remove',
@@ -461,7 +481,8 @@ class _LibraryScreenState extends State<LibraryScreen> {
                                                     deleteFiles: false,
                                                   ),
                                             icon: const Icon(
-                                              Icons.remove_circle_outline_rounded,
+                                              Icons
+                                                  .remove_circle_outline_rounded,
                                             ),
                                           ),
                                           IconButton(
@@ -688,18 +709,22 @@ class _LibraryScreenState extends State<LibraryScreen> {
                                   color: connected ? c.primary : c.error,
                                 ),
                                 const SizedBox(width: 8),
-                                Text(
-                                  !connected
-                                      ? 'Offline'
-                                      : serviceCompatible == false
-                                      ? 'Service update needed'
-                                      : 'Service connected',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: c.onSurfaceVariant,
+                                Expanded(
+                                  child: Text(
+                                    !connected
+                                        ? 'Offline'
+                                        : serviceCompatible == false
+                                        ? 'Service update needed'
+                                        : 'Service connected',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: c.onSurfaceVariant,
+                                    ),
                                   ),
                                 ),
-                                const Spacer(),
+                                const SizedBox(width: 8),
                                 Text(
                                   '${DownloadTask.formatBytes(tasks.fold<double>(0, (s, t) => s + t.speedBytesPerSec).round())}/s',
                                   style: TextStyle(
@@ -902,25 +927,16 @@ class _LibraryScreenState extends State<LibraryScreen> {
                   ],
                 ),
                 TextButton(
-                  onPressed: () => showDialog<void>(
-                    context: context,
-                    builder: (_) => AppearanceDialog(
-                      mode: widget.mode,
-                      compactRows: widget.compactRows,
-                      reduceMotion: widget.reduceMotion,
-                      onModeChanged: widget.onModeChanged,
-                      onCompactRowsChanged:
-                          widget.onCompactRowsChanged ?? (_) {},
-                      onReduceMotionChanged:
-                          widget.onReduceMotionChanged ?? (_) {},
-                    ),
-                  ),
+                  onPressed: showAppearance,
                   child: Row(
                     mainAxisAlignment: narrow
                         ? MainAxisAlignment.center
                         : MainAxisAlignment.start,
                     children: [
-                      const Icon(Icons.palette_outlined, size: 20),
+                      const Tooltip(
+                        message: 'Display options',
+                        child: Icon(Icons.palette_outlined, size: 20),
+                      ),
                       if (!narrow) ...[
                         const SizedBox(width: 12),
                         const Text('Display options'),
@@ -934,14 +950,20 @@ class _LibraryScreenState extends State<LibraryScreen> {
                       ? null
                       : () => showDialog<void>(
                           context: context,
-                          builder: (_) => PreferencesDialog(client: client),
+                          builder: (_) => PreferencesDialog(
+                            client: client,
+                            onAppearance: showAppearance,
+                          ),
                         ),
                   child: Row(
                     mainAxisAlignment: narrow
                         ? MainAxisAlignment.center
                         : MainAxisAlignment.start,
                     children: [
-                      const Icon(Icons.tune_rounded, size: 20),
+                      const Tooltip(
+                        message: 'Settings',
+                        child: Icon(Icons.tune_rounded, size: 20),
+                      ),
                       if (!narrow) ...[
                         const SizedBox(width: 12),
                         const Text('Settings'),
@@ -1162,7 +1184,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
                       : () => taskAction(t, 'reveal'),
                   icon: const Icon(Icons.folder_open_rounded, size: 20),
                 )
-              else
+              else if (t.status != TaskStatus.completed)
                 IconButton(
                   tooltip: active
                       ? 'Pause'
@@ -1181,52 +1203,53 @@ class _LibraryScreenState extends State<LibraryScreen> {
                     size: 22,
                   ),
                 ),
-              if (!selecting) PopupMenuButton<String>(
-                tooltip: 'Download actions',
-                enabled: serviceCompatible != false && !busy,
-                onSelected: (m) => taskAction(t, m),
-                itemBuilder: (_) => [
-                  if (hasFile)
+              if (!selecting)
+                PopupMenuButton<String>(
+                  tooltip: 'Download actions',
+                  enabled: serviceCompatible != false && !busy,
+                  onSelected: (m) => taskAction(t, m),
+                  itemBuilder: (_) => [
+                    if (hasFile)
+                      const PopupMenuItem(
+                        value: 'open',
+                        child: Text('Open file'),
+                      ),
+                    if (hasFile)
+                      const PopupMenuItem(
+                        value: 'open_with',
+                        child: Text('Open with…'),
+                      ),
+                    if (hasFile)
+                      const PopupMenuItem(
+                        value: 'reveal',
+                        child: Text('Show in folder'),
+                      ),
                     const PopupMenuItem(
-                      value: 'open',
-                      child: Text('Open file'),
+                      value: 'details',
+                      child: Text('Details & priority'),
                     ),
-                  if (hasFile)
+                    if (active || t.status == TaskStatus.paused)
+                      const PopupMenuItem(
+                        value: 'set_urgent',
+                        child: Text('Download first'),
+                      ),
+                    if (active || t.status == TaskStatus.paused)
+                      const PopupMenuItem(
+                        value: 'cancel',
+                        child: Text('Cancel download…'),
+                      ),
+                    if (!active && t.status != TaskStatus.paused)
+                      const PopupMenuItem(
+                        value: 'remove_task',
+                        child: Text('Remove from list'),
+                      ),
                     const PopupMenuItem(
-                      value: 'open_with',
-                      child: Text('Open with…'),
+                      value: 'delete',
+                      child: Text('Delete files…'),
                     ),
-                  if (hasFile)
-                    const PopupMenuItem(
-                      value: 'reveal',
-                      child: Text('Show in folder'),
-                    ),
-                  const PopupMenuItem(
-                    value: 'details',
-                    child: Text('Details & priority'),
-                  ),
-                  if (active || t.status == TaskStatus.paused)
-                    const PopupMenuItem(
-                      value: 'set_urgent',
-                      child: Text('Download first'),
-                    ),
-                  if (active || t.status == TaskStatus.paused)
-                    const PopupMenuItem(
-                      value: 'cancel',
-                      child: Text('Cancel download…'),
-                    ),
-                  if (!active && t.status != TaskStatus.paused)
-                    const PopupMenuItem(
-                      value: 'remove_task',
-                      child: Text('Remove from list'),
-                    ),
-                  const PopupMenuItem(
-                    value: 'delete',
-                    child: Text('Delete files…'),
-                  ),
-                ],
-                icon: const Icon(Icons.more_horiz_rounded, size: 20),
-              ),
+                  ],
+                  icon: const Icon(Icons.more_horiz_rounded, size: 20),
+                ),
             ],
           ),
         ),

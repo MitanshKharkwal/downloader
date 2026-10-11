@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:file_selector/file_selector.dart';
 import '../services/ipc_client.dart';
 import '../models/download_task.dart';
+import '../theme/library_theme.dart';
 
 class NewDownloadDialog extends StatefulWidget {
   const NewDownloadDialog({super.key, required this.client});
@@ -52,7 +53,9 @@ class _NewDownloadDialogState extends State<NewDownloadDialog> {
             !url.startsWith('http://') &&
             !url.startsWith('https://') &&
             inspectedTorrent != url) {
-          throw const FormatException('Inspect the torrent before downloading.');
+          throw const FormatException(
+            'Inspect the torrent before downloading.',
+          );
         }
         if (torrentInfo != null &&
             !torrentPriorities.any((value) => value > 0)) {
@@ -444,8 +447,9 @@ class _NewDownloadDialogState extends State<NewDownloadDialog> {
 }
 
 class PreferencesDialog extends StatefulWidget {
-  const PreferencesDialog({super.key, required this.client});
+  const PreferencesDialog({super.key, required this.client, this.onAppearance});
   final IpcClient client;
+  final VoidCallback? onAppearance;
   @override
   State<PreferencesDialog> createState() => _PreferencesDialogState();
 }
@@ -593,6 +597,17 @@ class _PreferencesDialogState extends State<PreferencesDialog> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
+                    if (widget.onAppearance != null)
+                      ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: const Icon(Icons.palette_outlined),
+                        title: const Text('Appearance & color'),
+                        subtitle: const Text(
+                          'Accent color, theme, density and motion',
+                        ),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: widget.onAppearance,
+                      ),
                     directory('Download folder', path),
                     Row(
                       children: [
@@ -634,6 +649,7 @@ class _PreferencesDialogState extends State<PreferencesDialog> {
                               child: Padding(
                                 padding: const EdgeInsets.only(right: 10),
                                 child: DropdownButtonFormField<int>(
+                                  isExpanded: true,
                                   initialValue: isStart ? start : end,
                                   decoration: InputDecoration(
                                     labelText: isStart ? 'Start' : 'End',
@@ -924,6 +940,8 @@ class _DownloadDetailsState extends State<DownloadDetails> {
                                         const Duration(milliseconds: 250),
                                       );
                                       await load();
+                                    } catch (e) {
+                                      if (mounted) setState(() => error = '$e');
                                     } finally {
                                       if (mounted) setState(() => busy = false);
                                     }
@@ -935,12 +953,16 @@ class _DownloadDetailsState extends State<DownloadDetails> {
                   ),
               ],
               DropdownButtonFormField<int>(
+                isExpanded: true,
                 initialValue: priority,
                 decoration: const InputDecoration(labelText: 'Priority'),
                 items: const [
                   DropdownMenuItem(
                     value: 0,
-                    child: Text('Low · 1 MB/s background mode'),
+                    child: Text(
+                      'Low · 1 MB/s background mode',
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
                   DropdownMenuItem(value: 1, child: Text('Normal')),
                   DropdownMenuItem(value: 2, child: Text('High')),
@@ -1076,6 +1098,8 @@ class AppearanceDialog extends StatefulWidget {
     required this.onModeChanged,
     required this.onCompactRowsChanged,
     required this.onReduceMotionChanged,
+    this.accent = AccentColor.pink,
+    this.onAccentChanged,
   });
 
   final ThemeMode mode;
@@ -1084,6 +1108,8 @@ class AppearanceDialog extends StatefulWidget {
   final ValueChanged<ThemeMode> onModeChanged;
   final ValueChanged<bool> onCompactRowsChanged;
   final ValueChanged<bool> onReduceMotionChanged;
+  final AccentColor accent;
+  final ValueChanged<AccentColor>? onAccentChanged;
 
   @override
   State<AppearanceDialog> createState() => _AppearanceDialogState();
@@ -1093,55 +1119,76 @@ class _AppearanceDialogState extends State<AppearanceDialog> {
   late ThemeMode mode = widget.mode;
   late bool compactRows = widget.compactRows;
   late bool reduceMotion = widget.reduceMotion;
+  late AccentColor accent = widget.accent;
 
   @override
   Widget build(BuildContext context) => AlertDialog(
     title: const Text('Appearance'),
     content: SizedBox(
       width: 440,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const Text('Theme', style: TextStyle(fontWeight: FontWeight.w600)),
-          const SizedBox(height: 10),
-          SegmentedButton<ThemeMode>(
-            segments: const [
-              ButtonSegment(
-                value: ThemeMode.system,
-                icon: Icon(Icons.brightness_auto_outlined),
-                label: Text('System'),
-              ),
-              ButtonSegment(
-                value: ThemeMode.light,
-                icon: Icon(Icons.light_mode_outlined),
-                label: Text('Light'),
-              ),
-              ButtonSegment(
-                value: ThemeMode.dark,
-                icon: Icon(Icons.dark_mode_outlined),
-                label: Text('Dark'),
-              ),
-            ],
-            selected: {mode},
-            onSelectionChanged: (value) => setState(() => mode = value.first),
-          ),
-          const SizedBox(height: 18),
-          SwitchListTile(
-            contentPadding: EdgeInsets.zero,
-            title: const Text('Compact download rows'),
-            subtitle: const Text('Fits more downloads on screen'),
-            value: compactRows,
-            onChanged: (value) => setState(() => compactRows = value),
-          ),
-          SwitchListTile(
-            contentPadding: EdgeInsets.zero,
-            title: const Text('Reduce motion'),
-            subtitle: const Text('Minimizes interface animations'),
-            value: reduceMotion,
-            onChanged: (value) => setState(() => reduceMotion = value),
-          ),
-        ],
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text('Theme', style: TextStyle(fontWeight: FontWeight.w600)),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final value in ThemeMode.values)
+                  ChoiceChip(
+                    label: Text(
+                      value.name[0].toUpperCase() + value.name.substring(1),
+                    ),
+                    selected: mode == value,
+                    onSelected: (_) => setState(() => mode = value),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 18),
+            const Text(
+              'Accent color',
+              style: TextStyle(fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final value in AccentColor.values)
+                  ChoiceChip(
+                    label: Text(value.label),
+                    avatar: CircleAvatar(
+                      backgroundColor:
+                          Theme.of(context).brightness == Brightness.dark
+                          ? value.dark
+                          : value.light,
+                      radius: 7,
+                    ),
+                    selected: accent == value,
+                    onSelected: (_) => setState(() => accent = value),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 18),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Compact download rows'),
+              subtitle: const Text('Fits more downloads on screen'),
+              value: compactRows,
+              onChanged: (value) => setState(() => compactRows = value),
+            ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Reduce motion'),
+              subtitle: const Text('Minimizes interface animations'),
+              value: reduceMotion,
+              onChanged: (value) => setState(() => reduceMotion = value),
+            ),
+          ],
+        ),
       ),
     ),
     actions: [
@@ -1152,6 +1199,7 @@ class _AppearanceDialogState extends State<AppearanceDialog> {
       FilledButton(
         onPressed: () {
           widget.onModeChanged(mode);
+          widget.onAccentChanged?.call(accent);
           widget.onCompactRowsChanged(compactRows);
           widget.onReduceMotionChanged(reduceMotion);
           Navigator.pop(context);

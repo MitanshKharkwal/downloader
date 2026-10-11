@@ -1,12 +1,29 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 
-ThemeData libraryTheme(Brightness brightness) {
+enum AccentColor {
+  pink('Pink', Color(0xffbb2945), Color(0xffff8193)),
+  blue('Blue', Color(0xff245ec5), Color(0xff9ebfff)),
+  purple('Purple', Color(0xff7945b3), Color(0xffd2adff)),
+  teal('Teal', Color(0xff08766e), Color(0xff77d9cb)),
+  amber('Amber', Color(0xff8b5900), Color(0xffffcb70));
+
+  const AccentColor(this.label, this.light, this.dark);
+  final String label;
+  final Color light;
+  final Color dark;
+}
+
+ThemeData libraryTheme(
+  Brightness brightness, {
+  AccentColor accent = AccentColor.pink,
+}) {
   final dark = brightness == Brightness.dark;
   final scheme = ColorScheme.fromSeed(
-    seedColor: const Color(0xffc83e57),
+    seedColor: accent.light,
     brightness: brightness,
-    primary: dark ? const Color(0xffff8193) : const Color(0xffbb2945),
+    primary: dark ? accent.dark : accent.light,
+    onPrimary: dark ? const Color(0xff18181a) : Colors.white,
     surface: dark ? const Color(0xff1c1c1e) : const Color(0xfffaf9f7),
     onSurface: dark ? const Color(0xfff1f0ee) : const Color(0xff242322),
     onSurfaceVariant: dark ? const Color(0xffaaa8a6) : const Color(0xff696562),
@@ -41,7 +58,10 @@ ThemeData libraryTheme(Brightness brightness) {
     dialogTheme: DialogThemeData(
       backgroundColor: scheme.surface,
       surfaceTintColor: Colors.transparent,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(22),
+        side: BorderSide(color: scheme.onSurface.withValues(alpha: .12)),
+      ),
     ),
     tooltipTheme: const TooltipThemeData(
       waitDuration: Duration(milliseconds: 450),
@@ -60,8 +80,18 @@ class Glass extends StatelessWidget {
         filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
         child: DecoratedBox(
           decoration: BoxDecoration(
-            color: c.surface.withValues(alpha: .78),
-            border: Border.all(color: c.outlineVariant.withValues(alpha: .3)),
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                Color.alphaBlend(
+                  Colors.white.withValues(alpha: .045),
+                  c.surface,
+                ).withValues(alpha: .87),
+                c.surface.withValues(alpha: .76),
+              ],
+            ),
+            border: Border.all(color: c.onSurface.withValues(alpha: .10)),
           ),
           child: child,
         ),

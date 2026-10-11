@@ -9,6 +9,8 @@ import 'package:flutter_ui/services/ipc_client.dart';
 import 'package:flutter_ui/screens/library_screen.dart';
 import 'package:flutter_ui/widgets/library_dialogs.dart';
 import 'package:flutter_ui/theme/library_theme.dart';
+import 'package:flutter_ui/main.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class FakeClient extends IpcClient {
   @override
@@ -166,6 +168,14 @@ class FileClient extends FakeClient {
   ];
 }
 
+class FailingRescanClient extends SafetyDetailClient {
+  @override
+  Future<dynamic> rpc(String method, [Map<String, dynamic>? args]) async {
+    if (method == 'rescan_task') throw Exception('Scanner unavailable');
+    return super.rpc(method, args);
+  }
+}
+
 class TorrentInspectClient extends FakeClient {
   @override
   Future<dynamic> rpc(String method, [Map<String, dynamic>? args]) async {
@@ -192,6 +202,224 @@ class TorrentInspectClient extends FakeClient {
 }
 
 void main() {
+  testWidgets('bulk deletion can be canceled and failures preserve selection', (
+    tester,
+  ) async {
+    final client = FakeClient();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: LibraryScreen(
+          client: client,
+          mode: ThemeMode.light,
+          onModeChanged: (_) {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Select downloads'));
+    await tester.pump();
+    await tester.tap(find.byTooltip('Select all visible'));
+    await tester.pump();
+    await tester.tap(find.byTooltip('Delete files and entries'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Keep'));
+    await tester.pumpAndSettle();
+    expect(client.calls, isNot(contains('remove_tasks')));
+    expect(find.text('3 selected'), findsOneWidget);
+    client.fail = true;
+    await tester.tap(find.byTooltip('Delete files and entries'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Delete files'));
+    await tester.pumpAndSettle();
+    expect(client.lastArgs!['delete_files'], true);
+    expect(find.textContaining('Service unavailable'), findsOneWidget);
+    expect(find.text('3 selected'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+  });
+  for (final width in [320.0, 800.0, 1280.0]) {
+    testWidgets('library handles large text at ${width.toInt()}px', (
+      tester,
+    ) async {
+      tester.view.physicalSize = Size(width, 720);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: libraryTheme(Brightness.light, accent: AccentColor.purple),
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(
+              context,
+            ).copyWith(textScaler: const TextScaler.linear(1.5)),
+            child: child!,
+          ),
+          home: LibraryScreen(
+            client: FakeClient(),
+            mode: ThemeMode.light,
+            onModeChanged: (_) {},
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      await tester.tap(find.byTooltip('Select downloads'));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+    });
+  }
+  testWidgets('failed safety rescan shows an error and keeps dialog usable', (
+    tester,
+  ) async {
+    final task = (await FileClient().listTasks()).first;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: DownloadDetails(client: FailingRescanClient(), task: task),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Scan again'));
+    await tester.tap(find.text('Scan again'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Scanner unavailable'), findsOneWidget);
+    expect(
+      tester
+          .widget<FilledButton>(find.widgetWithText(FilledButton, 'Apply'))
+          .onPressed,
+      isNotNull,
+    );
+    expect(tester.takeException(), isNull);
+  });
+  for (final width in [320.0, 480.0, 800.0]) {
+    for (final dialog in ['new', 'settings', 'details']) {
+      testWidgets('$dialog dialog fits ${width.toInt()}px', (tester) async {
+        tester.view.physicalSize = Size(width, 560);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        final client = TorrentDetailClient();
+        final task = (await client.listTasks()).first;
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: libraryTheme(Brightness.dark, accent: AccentColor.blue),
+            home: Scaffold(
+              body: switch (dialog) {
+                'new' => NewDownloadDialog(client: client),
+                'settings' => PreferencesDialog(client: client),
+                _ => DownloadDetails(client: client, task: task),
+              },
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+      });
+    }
+  }
+  test('all accents maintain readable button text in both themes', () {
+    for (final accent in AccentColor.values) {
+      for (final brightness in Brightness.values) {
+        final scheme = libraryTheme(brightness, accent: accent).colorScheme;
+        final values = [
+          scheme.primary.computeLuminance(),
+          scheme.onPrimary.computeLuminance(),
+        ]..sort();
+        expect(
+          (values.last + .05) / (values.first + .05),
+          greaterThanOrEqualTo(4.5),
+          reason: '${accent.name} ${brightness.name}',
+        );
+      }
+    }
+  });
+
+  testWidgets('settings exposes appearance and accent persists after restart', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    await tester.pumpWidget(DownloadManagerApp(client: FakeClient()));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byIcon(Icons.tune_rounded));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Appearance & color'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Teal'));
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+    expect(
+      (await SharedPreferences.getInstance()).getString('accent_color'),
+      'teal',
+    );
+    await tester.pumpWidget(const SizedBox());
+    await tester.pumpWidget(DownloadManagerApp(client: FakeClient()));
+    await tester.pumpAndSettle();
+    final context = tester.element(find.byType(LibraryScreen));
+    expect(Theme.of(context).colorScheme.primary, AccentColor.teal.light);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  for (final brightness in Brightness.values) {
+    testWidgets(
+      'appearance fits narrow window with large text in ${brightness.name}',
+      (tester) async {
+        tester.view.physicalSize = const Size(320, 560);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: libraryTheme(brightness),
+            builder: (context, child) => MediaQuery(
+              data: MediaQuery.of(
+                context,
+              ).copyWith(textScaler: const TextScaler.linear(1.5)),
+              child: child!,
+            ),
+            home: Scaffold(
+              body: AppearanceDialog(
+                mode: ThemeMode.system,
+                compactRows: false,
+                reduceMotion: false,
+                onModeChanged: (_) {},
+                onCompactRowsChanged: (_) {},
+                onReduceMotionChanged: (_) {},
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await tester.ensureVisible(find.text('Amber'));
+        await tester.tap(find.text('Amber'));
+        await tester.ensureVisible(find.text('Reduce motion'));
+        await tester.tap(find.text('Reduce motion'));
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
+  testWidgets('completed download without a path has no resume control', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: LibraryScreen(
+          client: FakeClient(),
+          mode: ThemeMode.light,
+          onModeChanged: (_) {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Finished'));
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('Resume'), findsNothing);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+  });
   test('server-denied download has an actionable error', () {
     final task = DownloadTask(
       id: 'denied',
