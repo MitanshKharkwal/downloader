@@ -45,6 +45,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
   final Set<String> pending = {};
   final Set<String> selected = {};
   bool selecting = false;
+  String? inspectedTaskId;
   Timer? timer;
   Timer? updateTimer;
   String? availableUpdate;
@@ -103,6 +104,10 @@ class _LibraryScreenState extends State<LibraryScreen> {
         setState(() {
           tasks = result;
           selected.removeWhere((id) => !result.any((task) => task.id == id));
+          if (inspectedTaskId != null &&
+              !result.any((task) => task.id == inspectedTaskId)) {
+            inspectedTaskId = null;
+          }
           connected = true;
           serviceCompatible = compatible;
           loading = false;
@@ -364,6 +369,15 @@ class _LibraryScreenState extends State<LibraryScreen> {
         status &&
         t.title.toLowerCase().contains(search.text.toLowerCase());
   }).toList();
+
+  DownloadTask? get inspectedTask {
+    final id = inspectedTaskId;
+    if (id == null) return null;
+    for (final task in tasks) {
+      if (task.id == id) return task;
+    }
+    return null;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -681,32 +695,72 @@ class _LibraryScreenState extends State<LibraryScreen> {
                           ),
                           const SizedBox(height: 18),
                           Expanded(
-                            child: loading
-                                ? const Center(
-                                    child: CircularProgressIndicator(),
-                                  )
-                                : visible.isEmpty
-                                ? empty()
-                                : ListView.separated(
-                                    padding: const EdgeInsets.fromLTRB(
-                                      22,
-                                      0,
-                                      22,
-                                      24,
-                                    ),
-                                    itemCount: visible.length,
-                                    separatorBuilder: (_, _) => Divider(
-                                      height: 1,
-                                      indent: 68,
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                if (inspectedTask == null ||
+                                    size.maxWidth >= 760)
+                                  Expanded(
+                                    child: loading
+                                        ? const Center(
+                                            child: CircularProgressIndicator(),
+                                          )
+                                        : visible.isEmpty
+                                        ? empty()
+                                        : ListView.separated(
+                                            padding: const EdgeInsets.fromLTRB(
+                                              22,
+                                              0,
+                                              22,
+                                              24,
+                                            ),
+                                            itemCount: visible.length,
+                                            separatorBuilder: (_, _) => Divider(
+                                              height: 1,
+                                              indent: 68,
+                                              color: c.outlineVariant
+                                                  .withValues(alpha: .45),
+                                            ),
+                                            itemBuilder: (_, i) => downloadRow(
+                                              visible[i],
+                                              size.maxWidth < 1180 ||
+                                                  inspectedTask != null,
+                                            ),
+                                          ),
+                                  ),
+                                if (inspectedTask case final task?) ...[
+                                  if (size.maxWidth >= 760) ...[
+                                    VerticalDivider(
+                                      width: 1,
                                       color: c.outlineVariant.withValues(
-                                        alpha: .45,
+                                        alpha: .55,
                                       ),
                                     ),
-                                    itemBuilder: (_, i) => downloadRow(
-                                      visible[i],
-                                      size.maxWidth < 1000,
+                                    SizedBox(
+                                      width: size.maxWidth < 1050 ? 310 : 370,
+                                      child: DownloadInspectorPane(
+                                        task: task,
+                                        onClose: () => setState(
+                                          () => inspectedTaskId = null,
+                                        ),
+                                        onAction: (method) =>
+                                            taskAction(task, method),
+                                      ),
                                     ),
-                                  ),
+                                  ] else
+                                    Expanded(
+                                      child: DownloadInspectorPane(
+                                        task: task,
+                                        onClose: () => setState(
+                                          () => inspectedTaskId = null,
+                                        ),
+                                        onAction: (method) =>
+                                            taskAction(task, method),
+                                      ),
+                                    ),
+                                ],
+                              ],
+                            ),
                           ),
                           Padding(
                             padding: const EdgeInsets.symmetric(
@@ -1085,7 +1139,9 @@ class _LibraryScreenState extends State<LibraryScreen> {
       color: Colors.transparent,
       child: InkWell(
         borderRadius: BorderRadius.circular(14),
-        onTap: () => selecting ? toggleSelection(t) : taskAction(t, 'details'),
+        onTap: () => selecting
+            ? toggleSelection(t)
+            : setState(() => inspectedTaskId = t.id),
         onLongPress: () => toggleSelection(t),
         child: Padding(
           padding: EdgeInsets.symmetric(
@@ -1266,6 +1322,426 @@ class _LibraryScreenState extends State<LibraryScreen> {
           ),
         ),
       ),
+    );
+  }
+}
+
+class DownloadInspectorPane extends StatelessWidget {
+  const DownloadInspectorPane({
+    super.key,
+    required this.task,
+    required this.onClose,
+    required this.onAction,
+  });
+
+  final DownloadTask task;
+  final VoidCallback onClose;
+  final ValueChanged<String> onAction;
+
+  Color _partColor(BuildContext context, DownloadPart part) {
+    final c = Theme.of(context).colorScheme;
+    return switch (part.status) {
+      'complete' => const Color(0xFF34C759),
+      'failed' => c.error,
+      'retrying' => const Color(0xFFFF9F0A),
+      'paused' || 'canceled' => c.onSurfaceVariant,
+      _ => c.primary,
+    };
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = Theme.of(context).colorScheme;
+    final active =
+        task.status == TaskStatus.downloading ||
+        task.status == TaskStatus.connecting ||
+        task.status == TaskStatus.queued;
+    final canResume =
+        task.status == TaskStatus.paused || task.status == TaskStatus.queued;
+    final canRetry =
+        task.status == TaskStatus.error || task.status == TaskStatus.canceled;
+
+    return ColoredBox(
+      color: c.surface.withValues(alpha: .72),
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(22, 18, 12, 14),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Download details',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                IconButton(
+                  tooltip: 'Close details',
+                  onPressed: onClose,
+                  icon: const Icon(Icons.close_rounded),
+                ),
+              ],
+            ),
+          ),
+          Divider(height: 1, color: c.outlineVariant.withValues(alpha: .55)),
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(22, 22, 22, 28),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        width: 44,
+                        height: 44,
+                        decoration: BoxDecoration(
+                          color: c.primary.withValues(alpha: .1),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: c.primary.withValues(alpha: .16),
+                          ),
+                        ),
+                        child: Icon(task.category.icon, color: c.primary),
+                      ),
+                      const SizedBox(width: 13),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              task.title,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                                fontSize: 15,
+                              ),
+                            ),
+                            const SizedBox(height: 5),
+                            Text(
+                              task.status.label,
+                              style: TextStyle(
+                                color: task.status.color,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 24),
+                  Row(
+                    children: [
+                      Text(
+                        '${(task.progress * 100).toStringAsFixed(1)}%',
+                        style: const TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w700,
+                          fontFeatures: [FontFeature.tabularFigures()],
+                        ),
+                      ),
+                      const Spacer(),
+                      Text(
+                        '${DownloadTask.formatBytes(task.downloadedBytes)} of ${task.sizeLabel}',
+                        style: TextStyle(
+                          color: c.onSurfaceVariant,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  LinearProgressIndicator(
+                    value: task.sizeBytes > 0 ? task.progress : null,
+                    minHeight: 7,
+                    borderRadius: BorderRadius.circular(6),
+                    backgroundColor: c.onSurface.withValues(alpha: .08),
+                  ),
+                  const SizedBox(height: 24),
+                  _InspectorMetrics(task: task),
+                  const SizedBox(height: 24),
+                  Row(
+                    children: [
+                      const Expanded(
+                        child: Text(
+                          'Connections',
+                          style: TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                      Text(
+                        task.type == 'http'
+                            ? task.supportsRanges
+                                  ? '${task.parts.length} parts'
+                                  : 'Single stream'
+                            : 'Not segmented',
+                        style: TextStyle(
+                          color: c.onSurfaceVariant,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  if (task.parts.isNotEmpty) ...[
+                    _SegmentedProgressBar(
+                      parts: task.parts,
+                      colorFor: (part) => _partColor(context, part),
+                    ),
+                    const SizedBox(height: 14),
+                    for (final part in task.parts)
+                      _PartRow(part: part, color: _partColor(context, part)),
+                  ] else
+                    Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: c.onSurface.withValues(alpha: .035),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: c.outlineVariant.withValues(alpha: .5),
+                        ),
+                      ),
+                      child: Text(
+                        task.type == 'http'
+                            ? 'Connection details will appear after the server responds.'
+                            : 'Part connections apply to direct HTTP downloads.',
+                        style: TextStyle(
+                          color: c.onSurfaceVariant,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                  const SizedBox(height: 24),
+                  _InspectorField(label: 'Source', value: task.source ?? '—'),
+                  const SizedBox(height: 14),
+                  _InspectorField(
+                    label: 'Saved to',
+                    value: task.filePath ?? '—',
+                  ),
+                ],
+              ),
+            ),
+          ),
+          Divider(height: 1, color: c.outlineVariant.withValues(alpha: .55)),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
+            child: Row(
+              children: [
+                if (active)
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed: () => onAction('pause'),
+                      icon: const Icon(Icons.pause_rounded, size: 18),
+                      label: const Text('Pause'),
+                    ),
+                  )
+                else if (canResume)
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed: () => onAction('resume'),
+                      icon: const Icon(Icons.play_arrow_rounded, size: 18),
+                      label: const Text('Resume'),
+                    ),
+                  )
+                else if (canRetry)
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed: () => onAction('retry'),
+                      icon: const Icon(Icons.refresh_rounded, size: 18),
+                      label: const Text('Retry'),
+                    ),
+                  )
+                else
+                  const Spacer(),
+                const SizedBox(width: 8),
+                IconButton.outlined(
+                  tooltip: 'Advanced details and priority',
+                  onPressed: () => onAction('details'),
+                  icon: const Icon(Icons.tune_rounded, size: 19),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _InspectorMetrics extends StatelessWidget {
+  const _InspectorMetrics({required this.task});
+  final DownloadTask task;
+
+  @override
+  Widget build(BuildContext context) {
+    final values = <(String, String)>[
+      ('Speed', task.speedLabel),
+      ('Time left', task.etaLabel),
+      ('Parts', task.parts.isEmpty ? '—' : '${task.parts.length}'),
+      ('Resume', task.supportsRanges ? 'Available' : 'Unavailable'),
+    ];
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        for (final value in values)
+          SizedBox(
+            width: 150,
+            child: _MetricTile(label: value.$1, value: value.$2),
+          ),
+      ],
+    );
+  }
+}
+
+class _MetricTile extends StatelessWidget {
+  const _MetricTile({required this.label, required this.value});
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: c.onSurface.withValues(alpha: .035),
+        borderRadius: BorderRadius.circular(11),
+        border: Border.all(color: c.outlineVariant.withValues(alpha: .45)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: TextStyle(color: c.onSurfaceVariant, fontSize: 11),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontWeight: FontWeight.w600,
+              fontFeatures: [FontFeature.tabularFigures()],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SegmentedProgressBar extends StatelessWidget {
+  const _SegmentedProgressBar({required this.parts, required this.colorFor});
+  final List<DownloadPart> parts;
+  final Color Function(DownloadPart) colorFor;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = Theme.of(context).colorScheme;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(5),
+      child: SizedBox(
+        height: 12,
+        child: Row(
+          children: [
+            for (var i = 0; i < parts.length; i++) ...[
+              Expanded(
+                child: ColoredBox(
+                  color: c.onSurface.withValues(alpha: .08),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: FractionallySizedBox(
+                      widthFactor: parts[i].progress,
+                      heightFactor: 1,
+                      child: ColoredBox(color: colorFor(parts[i])),
+                    ),
+                  ),
+                ),
+              ),
+              if (i != parts.length - 1)
+                SizedBox(width: 2, child: ColoredBox(color: c.surface)),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PartRow extends StatelessWidget {
+  const _PartRow({required this.part, required this.color});
+  final DownloadPart part;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        children: [
+          Container(
+            width: 7,
+            height: 7,
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+          ),
+          const SizedBox(width: 9),
+          SizedBox(
+            width: 24,
+            child: Text(
+              '${part.index}',
+              style: const TextStyle(
+                fontSize: 12,
+                fontFeatures: [FontFeature.tabularFigures()],
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              part.statusLabel,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(color: c.onSurfaceVariant, fontSize: 12),
+            ),
+          ),
+          Text(
+            DownloadTask.formatBytes(part.downloadedBytes),
+            style: const TextStyle(
+              fontSize: 11,
+              fontFeatures: [FontFeature.tabularFigures()],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _InspectorField extends StatelessWidget {
+  const _InspectorField({required this.label, required this.value});
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = Theme.of(context).colorScheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: TextStyle(color: c.onSurfaceVariant, fontSize: 11)),
+        const SizedBox(height: 5),
+        SelectableText(
+          value,
+          maxLines: 3,
+          style: const TextStyle(fontSize: 12, height: 1.4),
+        ),
+      ],
     );
   }
 }

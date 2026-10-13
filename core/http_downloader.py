@@ -49,6 +49,7 @@ class _Segment:
     start: int
     end: int  # inclusive
     downloaded: int = 0  # bytes already written for this segment
+    status: str = "queued"
 
     @property
     def remaining_start(self) -> int:
@@ -127,6 +128,7 @@ class HttpDownload:
             self._requested_status = DownloadStatus.PAUSED
             self._cancel_event.set()
             self._join_controller()
+            self._set_unfinished_part_status("paused")
             self.task.status = DownloadStatus.PAUSED
             self.task.speed_bps = 0
             self.events.emit("status", self.task)
@@ -140,6 +142,7 @@ class HttpDownload:
             self._requested_status = DownloadStatus.CANCELED
             self._cancel_event.set()
             self._join_controller()
+            self._set_unfinished_part_status("canceled")
             self.task.status = DownloadStatus.CANCELED
             self.task.speed_bps = 0
             self._cleanup_state_file()
@@ -211,6 +214,7 @@ class HttpDownload:
                 return
             if not all(seg.done for seg in self._segments):
                 raise RuntimeError("download ended before all segments completed")
+            self._set_unfinished_part_status("complete")
             os.replace(self._part_path, self.task.dest_path)
             self._cleanup_state_file()
             self.task.status = DownloadStatus.COMPLETED
@@ -220,6 +224,7 @@ class HttpDownload:
             self.events.emit("complete", self.task)
         except Exception as exc:
             if not self._requested_status:
+                self._set_unfinished_part_status("failed")
                 self.task.status = DownloadStatus.ERROR
                 self.task.error_message = str(exc)
                 self.task.health.update(
@@ -242,6 +247,7 @@ class HttpDownload:
                 self._save_state()
 
     def _segment_worker(self, seg: _Segment) -> None:
+        self._set_part_status(seg, "connecting")
         try:
             self._download_segment(seg)
         except Exception as exc:
@@ -312,6 +318,7 @@ class HttpDownload:
                         self.task.total_bytes = state["total_bytes"]
                         self.task.downloaded_bytes = sum(s.downloaded for s in self._segments)
                         self.task.supports_ranges = state.get("supports_ranges", True)
+                        self._publish_parts()
                         self._etag = state.get("etag")
                         self._last_modified = state.get("last_modified")
                         self.task.health.update(
@@ -438,12 +445,16 @@ class HttpDownload:
             segment_end = sys.maxsize if (total <= 0 and not accepts_ranges) else max(total - 1, 0)
             self._segments = [_Segment(0, segment_end)]
             self.num_connections = 1
+            self.task.num_connections = 1
+            self._publish_parts()
             return True
 
         self.task.supports_ranges = True
         self.task.total_bytes = total
         self.task.downloaded_bytes = 0
         self._segments = self._plan_segments(total, self.num_connections)
+        self.task.num_connections = len(self._segments)
+        self._publish_parts()
         return True
 
     @staticmethod
@@ -544,6 +555,7 @@ class HttpDownload:
                             raise RuntimeError(
                                 "Compressed transfer cannot be safely byte-addressed"
                             )
+                        self._set_part_status(seg, "receiving")
                         output.seek(start)
                         for chunk in response.iter_content(chunk_size=self.chunk_size):
                             if self._cancel_event.is_set():
@@ -563,12 +575,14 @@ class HttpDownload:
                             with self._lock:
                                 seg.downloaded += len(chunk)
                                 self.task.downloaded_bytes += len(chunk)
+                                self._publish_parts_locked()
                             self.events.emit("progress", self.task)
                         if self._unknown_size:
                             seg.end = seg.downloaded - 1
                             self.task.total_bytes = seg.downloaded
                             output.truncate(seg.downloaded)
                         if seg.done:
+                            self._set_part_status(seg, "complete")
                             return
                         raise requests.ConnectionError("stream truncated")
                 except requests.RequestException as exc:
@@ -578,7 +592,37 @@ class HttpDownload:
                     if failures >= MAX_CONSECUTIVE_SEGMENT_FAILURES * len(sources):
                         raise RuntimeError(f"gave up after {failures} attempts: {exc}") from exc
                     self.task.error_message = f"Retrying: {exc}"
+                    self._set_part_status(seg, "retrying")
                     self._cancel_event.wait(0.5)
+
+    def _publish_parts_locked(self) -> None:
+        self.task.parts = [
+            {
+                "index": index + 1,
+                "start": segment.start,
+                "end": segment.end,
+                "size_bytes": max(0, segment.end - segment.start + 1),
+                "downloaded_bytes": segment.downloaded,
+                "status": "complete" if segment.done else segment.status,
+            }
+            for index, segment in enumerate(self._segments)
+        ]
+
+    def _publish_parts(self) -> None:
+        with self._lock:
+            self._publish_parts_locked()
+
+    def _set_part_status(self, segment: _Segment, status: str) -> None:
+        with self._lock:
+            segment.status = "complete" if segment.done else status
+            self._publish_parts_locked()
+        self.events.emit("progress", self.task)
+
+    def _set_unfinished_part_status(self, status: str) -> None:
+        with self._lock:
+            for segment in self._segments:
+                segment.status = "complete" if segment.done else status
+            self._publish_parts_locked()
 
     def _speed_monitor(self) -> None:
         while not self._cancel_event.is_set() and self.task.status in (

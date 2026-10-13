@@ -71,6 +71,61 @@ class FakeClient extends IpcClient {
   }
 }
 
+class SegmentedClient extends FakeClient {
+  @override
+  Future<List<DownloadTask>> listTasks() async => [
+    DownloadTask(
+      id: 'segmented',
+      title: 'large-archive.iso',
+      category: TaskCategory.other,
+      sizeBytes: 8000,
+      receivedBytes: 3900,
+      progress: .4875,
+      speedBytesPerSec: 1200,
+      status: TaskStatus.downloading,
+      source: 'https://example.invalid/large-archive.iso',
+      type: 'http',
+      supportsRanges: true,
+      numConnections: 4,
+      filePath: r'C:\Downloads\large-archive.iso',
+      parts: const [
+        DownloadPart(
+          index: 1,
+          start: 0,
+          end: 1999,
+          sizeBytes: 2000,
+          downloadedBytes: 2000,
+          status: 'complete',
+        ),
+        DownloadPart(
+          index: 2,
+          start: 2000,
+          end: 3999,
+          sizeBytes: 2000,
+          downloadedBytes: 1200,
+          status: 'receiving',
+        ),
+        DownloadPart(
+          index: 3,
+          start: 4000,
+          end: 5999,
+          sizeBytes: 2000,
+          downloadedBytes: 700,
+          status: 'receiving',
+        ),
+        DownloadPart(
+          index: 4,
+          start: 6000,
+          end: 7999,
+          sizeBytes: 2000,
+          downloadedBytes: 0,
+          status: 'connecting',
+        ),
+      ],
+    ),
+  ];
+}
+
 class OldServiceClient extends FakeClient {
   @override
   Future<dynamic> rpc(String method, [Map<String, dynamic>? args]) async {
@@ -220,6 +275,66 @@ class TorrentInspectClient extends FakeClient {
 }
 
 void main() {
+  testWidgets('clicking a download opens segmented progress side pane', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1280, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: libraryTheme(Brightness.dark),
+        home: LibraryScreen(
+          client: SegmentedClient(),
+          mode: ThemeMode.dark,
+          onModeChanged: (_) {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('large-archive.iso'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(DownloadInspectorPane), findsOneWidget);
+    expect(find.text('Download details'), findsOneWidget);
+    expect(find.text('4 parts'), findsOneWidget);
+    expect(find.text('Receiving data'), findsNWidgets(2));
+    expect(find.text('Connecting'), findsOneWidget);
+    expect(find.text('Resume'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    await tester.tap(find.byTooltip('Close details'));
+    await tester.pumpAndSettle();
+    expect(find.byType(DownloadInspectorPane), findsNothing);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('segmented details replace the list on a narrow window', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(480, 700);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: libraryTheme(Brightness.light),
+        home: LibraryScreen(
+          client: SegmentedClient(),
+          mode: ThemeMode.light,
+          onModeChanged: (_) {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('large-archive.iso'));
+    await tester.pumpAndSettle();
+    expect(find.byType(DownloadInspectorPane), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+  });
+
   for (final deleteFiles in [false, true]) {
     testWidgets(
       'bulk ${deleteFiles ? 'delete' : 'remove'} falls back for an older service',

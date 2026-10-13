@@ -7,7 +7,7 @@ Setup 7.
 1. Build the Flutter UI so both packages receive the latest interface:
 
 ```powershell
-& C:\src\flutter\bin\flutter.bat build windows --release --build-name 1.2.0 --build-number 3
+& C:\src\flutter\bin\flutter.bat build windows --release --build-name 1.3.0 --build-number 4
 ```
 
 2. Build the daemon and browser native-host utilities:

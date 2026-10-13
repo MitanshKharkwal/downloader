@@ -54,6 +54,7 @@ class DownloadTask:
     num_connections: int = 8
     supports_ranges: bool = False
     mirrors: list[str] = field(default_factory=list)
+    parts: list[dict[str, object]] = field(default_factory=list)
 
     # Torrent-specific
     num_peers: int = 0

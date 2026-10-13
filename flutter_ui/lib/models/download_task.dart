@@ -124,6 +124,11 @@ class DownloadTask {
     this.priority,
     this.filePath,
     this.receivedBytes,
+    this.source,
+    this.type,
+    this.supportsRanges = false,
+    this.numConnections = 1,
+    this.parts = const <DownloadPart>[],
   });
 
   String get errorLabel {
@@ -197,6 +202,15 @@ class DownloadTask {
       priority: json['priority'],
       filePath: json['file_path'],
       receivedBytes: downloadedBytes,
+      source: json['source']?.toString(),
+      type: json['type']?.toString(),
+      supportsRanges: json['supports_ranges'] == true,
+      numConnections: (json['num_connections'] as num?)?.round() ?? 1,
+      parts: [
+        for (final part in json['parts'] as List? ?? const [])
+          if (part is Map)
+            DownloadPart.fromJson(Map<String, dynamic>.from(part)),
+      ],
     );
   }
 
@@ -213,6 +227,11 @@ class DownloadTask {
   final String? filePath;
   final int sizeBytes;
   final int? receivedBytes;
+  final String? source;
+  final String? type;
+  final bool supportsRanges;
+  final int numConnections;
+  final List<DownloadPart> parts;
 
   /// 0.0 - 1.0
   double progress;
@@ -276,4 +295,45 @@ class DownloadTask {
     final int restMinutes = minutes % 60;
     return restMinutes == 0 ? '${hours}h' : '${hours}h ${restMinutes}m';
   }
+}
+
+class DownloadPart {
+  const DownloadPart({
+    required this.index,
+    required this.start,
+    required this.end,
+    required this.sizeBytes,
+    required this.downloadedBytes,
+    required this.status,
+  });
+
+  factory DownloadPart.fromJson(Map<String, dynamic> json) => DownloadPart(
+    index: (json['index'] as num?)?.round() ?? 0,
+    start: (json['start'] as num?)?.round() ?? 0,
+    end: (json['end'] as num?)?.round() ?? 0,
+    sizeBytes: (json['size_bytes'] as num?)?.round() ?? 0,
+    downloadedBytes: (json['downloaded_bytes'] as num?)?.round() ?? 0,
+    status: json['status']?.toString() ?? 'queued',
+  );
+
+  final int index;
+  final int start;
+  final int end;
+  final int sizeBytes;
+  final int downloadedBytes;
+  final String status;
+
+  double get progress =>
+      sizeBytes <= 0 ? 0 : (downloadedBytes / sizeBytes).clamp(0.0, 1.0);
+
+  String get statusLabel => switch (status) {
+    'receiving' => 'Receiving data',
+    'connecting' => 'Connecting',
+    'retrying' => 'Retrying',
+    'complete' => 'Complete',
+    'paused' => 'Paused',
+    'failed' => 'Failed',
+    'canceled' => 'Canceled',
+    _ => 'Waiting',
+  };
 }

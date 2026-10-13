@@ -179,6 +179,10 @@ def _make_handler(manager: DownloadManager, token: str):
                                     "category": getattr(task, "category", "") or "",
                                     "created_at": task.created_at or 0,
                                     "description": task.description or "",
+                                    "type": task.type.value,
+                                    "supports_ranges": task.supports_ranges,
+                                    "num_connections": task.num_connections,
+                                    "parts": list(task.parts),
                                 }
                             )
                         self._send_json(200, {"ok": True, "tasks": tasks})
